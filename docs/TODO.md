@@ -63,7 +63,7 @@
 
 ### 検証・フロント（Step R5–R6）
 
-- [ ] **Step R5 — WS 結合テスト**: `test_ws_round.py` パターンで MINORITY（3人・閾値 NORMAL 移行）、BOSS（スコア・勝者確定）、TOURNAMENT（4人・ペア内あいこ・bye）の主要シナリオ。既存 NORMAL 回帰を維持
+- [x] **Step R5 — WS 結合テスト**: `test_ws_round.py` パターンで MINORITY（3人・閾値 NORMAL 移行）、BOSS（スコア・勝者確定）、TOURNAMENT（4人・ペア内あいこ・bye）の主要シナリオ。既存 NORMAL 回帰を維持
 - [ ] **Step R6 — フロント UI**（`SCREENS.md` §4.2 / ゲーム画面）: `SettingsPanel` で特殊ルール選択を有効化、`minority_finish_*` / `boss_player_id`、ゲーム画面の `segment_id` / ボス表示 / 得点、`SUBMIT_HAND` に `segment_id` 付与（TOURNAMENT）
 
 ## Phase 4: Frontend Integration & Polish
