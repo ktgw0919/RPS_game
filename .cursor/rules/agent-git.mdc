@@ -1,0 +1,78 @@
+---
+description: Cursor Agent の Git 操作タイミング（ブランチ・コミット・push・PR）。人間の明示依頼なしで実施してよい範囲を定義する。
+alwaysApply: true
+---
+
+# Agent Git ワークフロー
+
+人間が毎回「コミットして」「PR を作って」と指示しなくても、**完了した実装タスク**については本ルールに従い Git 操作を進める。正本の手順・規約は `docs/CONTRIBUTING.md` §2–§6・§9–§10。
+
+**マージ（`main` への取り込み）は Agent が行わない。** GitHub 上で人間が CI green を確認して Squash merge する（§5）。
+
+## いつ自動で Git 操作するか
+
+### A. タスク完了時 — ブランチ・コミット・push・PR 作成（デフォルト）
+
+次の**すべて**を満たすとき、追加の Git 指示がなくても実施する。
+
+1. **実装系タスク**である（`docs/TODO.md` の Step / MVP 残タスク、バグ修正、CI 修正、依頼されたドキュメント整備など）。**質問のみ・調査のみ・レビューのみ**は対象外。
+2. **スコープが完了**している。
+   - TODO Step: 受け入れ条件 + 対応テスト通過 + `docs-sync.mdc` の進捗更新済み（§9）。
+   - 部分実装: Step は `[ ]` のまま。PR は作らない（末尾「MVP 残タスク」追記のみでよい）。
+3. **ローカル品質チェック**（`CONTRIBUTING.md` §6）が通っている。コード変更が無い純ドキュメント PR は lint 対象外でよい。
+4. **無関係な WIP** を同じコミット/PR に含めない。別件の未コミット変更は `git stash` してから作業する。
+5. **`main` に直接 push しない**（§2）。
+
+**手順（PowerShell）:**
+
+1. `main` を最新化: `git fetch origin` → `git checkout main` → `git pull origin main`（未 push のローカル `main` コミットがある場合は feature 化または退避してから）。
+2. feature ブランチ作成: `feat/...` / `fix/...` / `docs/...`（§2 命名。Phase/Step が分かる名前を推奨）。
+3. 変更をステージ → Conventional Commits でコミット（§3）。ドキュメント同期は実装と**同一 PR**。
+4. `git push -u origin HEAD`
+5. `gh pr create`（§5 の PR 本文テンプレ）。Windows で `gh` が PATH に無い場合は `"C:\Program Files\GitHub CLI\gh.exe"` を使う。
+6. ユーザーに **PR URL** を返す。
+
+### B. 既存 PR ブランチ上 — コミット・push のみ
+
+次のときは **新規 PR を作らず**、同じブランチに push する。
+
+- オープン中の PR に対する CI 失敗の修正（format / lint / test）
+- 同一 PR スコープ内のレビュー指摘対応
+- PR 作成後に見つかった、当該 PR に属する追修正
+
+CI が再実行されるまで `gh pr checks` で確認し、失敗が続く場合は追加修正して push する。
+
+### C. マージ後の同期
+
+ユーザーがマージ完了を伝えたとき、または**新しい実装タスクを始める直前**に:
+
+1. `git fetch origin`
+2. `git checkout main` → `git pull origin main`
+3. マージ済み feature ブランチをローカル削除（`git branch -d ...`）
+4. 退避した stash があれば `git stash pop`（競合時は解消してから次タスクへ）
+
+## いつ自動で Git 操作しないか
+
+- **`main` への直接 push**、**PR のマージ**、**force push**、**hard reset**、`git config` 変更
+- テスト・lint・build が **未通過**のままのコミット/PR
+- `.env` や秘匿情報、`.gitignore` 対象の生成物（`tsconfig.*.tsbuildinfo` 等）のコミット
+- **部分実装**を Step 完了として PR 化すること
+- ユーザーが **「コミットしないで」**「PR はまだ」等と明示したとき
+- 探索・説明・設計相談のみで作業ツリーに変更が無いとき
+
+## コミット・PR の中身
+
+- **1 PR ≒ 1 完了単位**（1 TODO Step、または論理上まとまった MVP 残タスク束）。無関係な変更は PR を分ける。
+- **front/back 型変更**は同一 PR（`CONTRIBUTING.md` §4）。
+- PR 説明に必ず含める: **Summary**、**Test plan**（実行済みコマンド）、**関連 TODO Step**（`docs/TODO.md` の Phase/Step または MVP 残タスク名）。
+- Squash merge 前提のため、ローカルで複数コミットしてもよい。
+
+## ユーザー依頼との対応
+
+| 依頼の例 | Agent の Git 動作 |
+|----------|-------------------|
+| 「Phase 3 Step 1 を実装して」 | 完了後に §A（PR まで） |
+| 「CI を直して」 | 対象 PR ブランチで §B |
+| 「マージしたので同期して」 | §C |
+| 「explain / なぜ失敗？」のみ | Git 操作なし |
+| 「WIP で一旦保存」 | feature ブランチにコミット+push。PR は **Draft** または未作成（ユーザー指定がなければ Draft は作らず push のみ） |

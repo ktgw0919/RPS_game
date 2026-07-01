@@ -62,6 +62,21 @@ WS payload / `ErrorCode` / `MatchConfig` を増減・変更する場合は、**f
 4. ソロでもセルフレビュー（Files changed を一読）を行う。
 5. **Squash and merge** を基本とする（PR 単位で履歴が1コミットにまとまり、Conventional Commits と整合）。マージ後はブランチを削除する。
 
+### PR 説明テンプレ（人間・Agent 共通）
+
+```markdown
+## Summary
+- （変更の要点を 1–3 行）
+
+## Test plan
+- [x] backend: `uv run ruff check .` / `ruff format --check .` / `mypy app` / `pytest`
+- [x] frontend: `npm run lint` / `npm run format:check` / `npm run build`
+- [ ] （必要なら手動確認）
+
+## Related TODO Step
+- Phase N Step M（`docs/TODO.md`）または MVP 残タスクの項目名
+```
+
 ## 6. コミット前のローカルチェック
 
 PR 前にローカルで品質チェックを通しておく（CI と同等）。
@@ -114,3 +129,51 @@ docs(req): check off MVP game loop; note match_history pending
 | 進捗の正本 | `docs/TODO.md` | 必ず更新 |
 | 進捗サマリー | `README.md`, `docs/REQUIREMENTS.md` | 条件を満たしたとき |
 | 設計の正本 | `docs/ARCHITECTURE.md` | プロトコル・型・FSM を変えたときのみ |
+
+## 10. Cursor Agent による Git 操作
+
+Cursor Agent（以降 **Agent**）が `docs/TODO.md` の実装や修正を行うとき、**人間が毎回「コミットして」「PR を作って」と指示しなくても**、完了したタスクについては本節と `.cursor/rules/agent-git.mdc` に従い Git 操作を進める。
+
+### 10.1 役割分担
+
+| 操作 | Agent | 人間（GitHub） |
+|------|-------|----------------|
+| feature ブランチ作成 | ✅ タスク開始〜完了時 | — |
+| コミット・push | ✅ 完了かつ §6 通過後 | — |
+| PR 作成 | ✅ | — |
+| CI 失敗の修正 push | ✅ 同一 PR ブランチ | — |
+| PR レビュー・マージ | — | ✅ Squash merge（§5） |
+| `main` への直接 push | ❌ 禁止 | — |
+
+**マージは Agent が行わない。** CI green と内容確認のあと、人間が GitHub 上でマージする。
+
+### 10.2 自動で PR まで行う条件
+
+次の**すべて**を満たすとき、追加の Git 指示なしで PR を作成する。
+
+1. **実装系タスク**（TODO Step・MVP 残タスク・バグ修正・依頼されたドキュメント整備など）。質問・調査のみは対象外。
+2. **スコープ完了** — Step の場合は受け入れ条件・テスト・`docs-sync.mdc` の進捗更新まで済んでいる（§9）。
+3. **ローカル品質チェック**（§6）通過。コード変更が無い純ドキュメント PR は §6 のコード系を省略可。
+4. **無関係な WIP** を同じ PR に含めない。
+
+**部分実装**のときは `TODO.md` の Step を `[x]` にせず、**PR は作らない**（「MVP 残タスク」への追記のみ）。
+
+### 10.3 典型フロー（Agent）
+
+1. `git fetch` / `main` を最新化
+2. `feat/phaseN-stepM-...` 等でブランチ作成（§2）
+3. 実装 + テスト + 進捗ドキュメント（§9 / `docs-sync.mdc`）
+4. §6 を実行
+5. コミット（§3）→ `git push -u origin HEAD` → `gh pr create`（§5 テンプレ）
+6. PR URL をユーザーに報告
+7. CI が落ちたら同一ブランチで修正して再 push（人間の指示を待たない）
+8. 人間がマージしたら、次タスク前または依頼時に `main` を `git pull` で同期
+
+### 10.4 Agent が行わないこと
+
+- `main` への直接 push、force push、hard reset、`git config` 変更
+- テスト・lint 未通過のままの PR 作成
+- `.env` 等の秘匿ファイルのコミット
+- ユーザーが「まだ PR にしない」と明示した場合
+
+詳細な分岐（既存 PR への push のみ、マージ後同期、WIP 保存など）は `.cursor/rules/agent-git.mdc` を正とする。

@@ -57,3 +57,4 @@ alwaysApply: true
 - 実装 PR には進捗ドキュメント更新を含める（例: `docs(todo): mark Phase 2 Step 9 done`）
 - PR 説明に「関連 TODO Step」を書く（`docs/CONTRIBUTING.md` §5 / §9）
 - ドキュメントのみの変更は `docs(...)` scope を使う
+- **Step 完了後の Git 操作**（feature ブランチ・コミット・push・PR 作成）は `.cursor/rules/agent-git.mdc` に従う。人間の「コミットして」指示がなくても PR まで進めてよい。**マージは人間が GitHub 上で行う**（`CONTRIBUTING.md` §10）
