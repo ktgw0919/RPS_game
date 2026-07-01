@@ -18,6 +18,7 @@ _DEFAULT_STATUS: dict[ErrorCode, int] = {
     ErrorCode.ROOM_FULL: 409,
     ErrorCode.ROOM_CLOSED: 410,
     ErrorCode.DISPLAY_NAME_INVALID: 422,
+    ErrorCode.SERVICE_UNAVAILABLE: 503,
 }
 
 

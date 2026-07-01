@@ -1,15 +1,17 @@
 /**
  * Lightweight REST client (ARCHITECTURE.md §3.1).
  *
- * MVP uses plain `fetch` only; SWR is deferred to a later phase.
+ * Game state uses WebSocket; match history reads use SWR via `useMatchHistory`.
  */
 
+import { MATCH_HISTORY_DEFAULT_LIMIT } from '@/lib/constants';
 import {
   isErrorCode,
   type CreateRoomResponse,
   type ErrorCode,
   type ErrorResponse,
   type JoinRoomResponse,
+  type MatchHistoryListResponse,
   type PublicConfigResponse,
   type RoomStateResponse,
 } from '@/types';
@@ -75,4 +77,14 @@ export function getRoom(roomCode: string): Promise<RoomStateResponse> {
 
 export function getPublicConfig(): Promise<PublicConfigResponse> {
   return apiFetch<PublicConfigResponse>('/config');
+}
+
+export function getMatchHistory(
+  roomCode: string,
+  limit: number = MATCH_HISTORY_DEFAULT_LIMIT,
+): Promise<MatchHistoryListResponse> {
+  const params = new URLSearchParams({ limit: String(limit) });
+  return apiFetch<MatchHistoryListResponse>(
+    `/rooms/${encodeURIComponent(roomCode)}/matches?${params}`,
+  );
 }

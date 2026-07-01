@@ -20,3 +20,7 @@ export const ROOM_CAPACITY = 20;
 // authoritative; this is UX assistance only.
 export const DISPLAY_NAME_MIN_LEN = 1;
 export const DISPLAY_NAME_MAX_LEN = 20;
+
+// Match history pagination (`backend/app/core/constants.py`).
+export const MATCH_HISTORY_DEFAULT_LIMIT = 20;
+export const MATCH_HISTORY_MAX_LIMIT = 50;

@@ -58,6 +58,6 @@ app/
   errors.py      # AppError + REST error handler
   utils.py       # generic helpers (time formatting, room code)
   routers/       # rooms.py (REST), ws.py (WebSocket)
-  core/          # constants, security, state_store, connection_manager, lifecycle, round_runner, rate_limit
+  core/          # constants, security, state_store, connection_manager, lifecycle, round_runner, match_history, rate_limit
   game/          # engine, cpu, start_conditions (rules/: Phase 3)
 ```

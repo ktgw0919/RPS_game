@@ -40,11 +40,18 @@
 - [x] Step 4: 各種エッジケース（途中で通信が切れたプレイヤーの再接続復帰、未提出のタイムアウト、ホスト切断時の移譲）のバグフィックス。クライアントは `deadline_at` と `server_now` の差分で残り時間を表示する
 - [x] Step 5:（開発/デモ用 CPU）ロビーに「＋CPUを追加」ボタン（ホストのみ・`ALLOW_CPU` 有効時のみ・`ADD_CPU`/`REMOVE_CPU` と連動）と、参加者一覧の CPU バッジ（🤖）＋削除ボタンを実装する。`PlayerView.is_cpu` を `types` に追加し、ソロ＋CPU で「ゲーム開始」が活性化することを確認する（`SCREENS.md` §4/§5）
 
+## Phase 5: Match History Read & UI
+> 書き込み（`match_history` 永続化）は完了済み。本フェーズでルーム単位の読み取り REST とロビー UI を追加する。グローバルスコアボードは対象外（アカウント連携後フェーズ）。
+- [x] Step 1: `MatchHistoryRepository.list_by_room` と `GET /rooms/{code}/matches` を実装（Pydantic DTO・`limit` クエリ・`ended_at` 降順・DB 障害時 `503`）。**インメモリのルーム有無に依存せず** MongoDB を `room_code` で直接検索する。pytest で書き込み→読み取り結合テスト
+- [x] Step 2: `ARCHITECTURE.md` §3.1 / §4.1 の確定内容に沿い、front `types` / `api.ts` / **SWR 導入**（`useMatchHistory` フック）
+- [x] Step 3: ロビーに `MatchHistoryPanel`（`SCREENS.md` §4.6）。`WAITING` 表示時・`RETURN_TO_LOBBY` 後に再取得。`MATCH_END` 画面には履歴を出さない（直前結果は WS の `MATCH_END` で表示済み）
+- [x] Step 4: `REQUIREMENTS.md` の対戦履歴閲覧を `[x]`、`README.md` 実装状況を更新
+
 ## MVP 残タスク（Phase 1–4 外の仕上げ）
 
 設計上は MVP 要件だが、上記フェーズの Step には含まれていない、または UI のみ未着手の項目。
 
-- [ ] **`match_history` 永続化**（`ARCHITECTURE.md` §6）: マッチ終了時に MongoDB へ確定結果を保存。現状は DB 接続のみで書き込み未実装
-- [ ] **QR コード共有**（`SCREENS.md` §4）: 参加リンク（`/join/:code`）の QR 表示。コード・リンクのコピーは実装済み
-- [ ] **退室 UI**（`LEAVE`）: バックエンド WS は実装済み。フロントから明示的に退室するボタンは未実装
+- [x] **`match_history` 永続化**（`ARCHITECTURE.md` §6）: マッチ終了時に MongoDB へ確定結果を保存（`core/match_history.py`）
+- [ ] **QR コード共有**（`SCREENS.md` §4.1.1）: 参加リンク（`/join/:code`）の QR をモーダル表示（`ShareQrModal` / `react-qr-code`）。コード・リンクのコピーは `SharePanel` に実装済み
+- [ ] **ルーム操作 UI**（`SCREENS.md` §4.7）: `RoomActionsPanel`・`useExitRoom`・退室／別ルーム参加／新規作成（試合中は移動系非活性）
 - [ ] **フロント E2E テスト**（任意）: Playwright 等でのブラウザ結合テスト

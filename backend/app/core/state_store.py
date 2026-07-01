@@ -302,6 +302,7 @@ class InMemoryGameStateStore(GameStateStore):
             state=MatchState.COLLECTING,
             config=config,
             alive_player_ids=list(alive_player_ids),
+            participant_player_ids=list(alive_player_ids),
             scores={},
             # current_round_no stays 0 until the first ROUND_START (Step 9) sets 1.
             current_round_no=0,

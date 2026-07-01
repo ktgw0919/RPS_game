@@ -4,7 +4,7 @@
 - **Frontend**: React 18 + **Vite** + **TypeScript（strict モード）** (SPA), Tailwind CSS
   - リアルタイム同期: WebSocket（`useWebSocket` カスタムフック）
   - **ゲーム状態管理**: React Context + `useReducer`。`STATE_SYNC` をスナップショット、その他 WS メッセージを差分アクションとして reducer で適用する（追加ライブラリは導入しない）。
-  - **REST 取得（SWR）は MVP では見送り**、軽量な fetch ラッパーのみとする。履歴・スコアボードの取得を実装する後フェーズで SWR を導入する。
+  - **REST 取得（SWR）**: Phase 1–4（MVP）では見送り、軽量な `fetch` ラッパーのみ。**Phase 5**（対戦履歴読み取り）で SWR を導入し、`GET /rooms/{code}/matches` の取得に用いる。グローバルスコアボードはアカウント連携後フェーズで SWR を拡張利用する。
 - **Backend**: FastAPI (Python 3.12+), **`uv` + `pyproject.toml`** for dependency management
   - **Pydantic v2** でスキーマ定義（`model_config` / `field_validator`）
   - アプリのライフサイクルは `lifespan`（`@app.on_event` は使用しない）
@@ -40,6 +40,7 @@
 │       ├── core/
 │       │   ├── connection_manager.py  # WebSocket 接続管理 (雛形に無い追加要素)
 │       │   ├── state_store.py         # GameStateStore インターフェース + InMemory 実装 (Redis 実装は任意で追加)
+│       │   ├── match_history.py       # Match 終了時の MongoDB 永続化 (match_history コレクション)
 │       │   ├── security.py            # プレイヤートークンの発行・検証
 │       │   └── constants.py           # プロトコル/体感の固定値 (ハートビート間隔・WS サイズ上限・CPU 遅延・スイープ間隔)
 │       ├── game/
@@ -86,6 +87,21 @@
 | `POST /rooms` | ルーム作成（作成者がホスト） | `{ display_name: string }` | `201` `{ room_code, player_id, player_token, room: RoomView }` | `DISPLAY_NAME_INVALID` / 422 |
 | `POST /rooms/{code}/players` | ルーム参加 | `{ display_name: string }` | `201` `{ player_id, player_token, room: RoomView }` | `ROOM_NOT_FOUND` / 404、`ROOM_FULL` / 409、`ROOM_CLOSED` / 410、`DISPLAY_NAME_INVALID` / 422 |
 | `GET /rooms/{code}` | 存在確認・初期状態取得（任意） | — | `200` `{ room: RoomView }` | `ROOM_NOT_FOUND` / 404、`ROOM_CLOSED` / 410 |
+| `GET /rooms/{code}/matches` | ルーム内の確定マッチ履歴一覧（Phase 5） | —（クエリ `limit` 任意） | `200` `MatchHistoryListResponse`（下記） | 不正 `code` / 422、`SERVICE_UNAVAILABLE` / 503 |
+
+- **`GET /rooms/{code}/matches`（Phase 5）**
+  - **データ源**: `match_history` コレクションを **`room_code` で直接検索**する。`GameStateStore`（インメモリ）上のルーム有無・`CLOSED` 状態に依存しない（プロセス再起動後も履歴は取得可能）。
+  - **クエリ**: `limit`（任意・既定 `20`・最大 `50`）。`ended_at` **降順**（新しい試合が先）。
+  - **認可（MVP）**: ルームコードを知っていれば取得可能（トークン不要）。参加リンクと同程度の共有範囲とする。在室者限定化は後フェーズで検討。
+  - **DB 障害時**: `503` + `{ code: "SERVICE_UNAVAILABLE", message }`（空配列は返さない。クライアントは「履歴未取得」と区別する）。
+  - **成功レスポンス** `MatchHistoryListResponse`:
+    - `{ room_code: string, matches: MatchHistoryEntry[], has_more: boolean }`
+    - `has_more`: 返却件数が `limit` に達したとき `true`（さらに古い履歴がある可能性）。
+  - **`MatchHistoryEntry`**（各要素。時刻は §4 規約の ISO8601 文字列）:
+    - `{ match_id, rule_type, players: [{ player_id, display_name, is_cpu }], winner_ids, scores, started_at, ended_at }`
+    - 書き込みスキーマ（§5 `match_history`）と同一構造。MongoDB の `_id` はクライアントに露出しない。
+  - **WS 通知なし**: 新規マッチ確定時に履歴用メッセージは送らない。クライアントはロビー表示時・`RETURN_TO_LOBBY` 後に REST で再取得する。
+  - **任意（Phase 5 外）**: `GET /rooms/{code}/matches/{match_id}`（単件詳細）は MVP では不要（一覧で足りる）。
 
 - **エラー形式**: REST も `{ code, message }` を本文に返し、`code` は §4.1 の `ErrorCode` を共有する（HTTP ステータスは上表の対応）。
 - **定員（`ROOM_FULL`）の基準**: 在室人数は **接続中（CONNECTED）／切断中（DISCONNECTED）の人間・観戦者・CPU を合算**して数える（DISCONNECTED も枠を占有する）。プルーニングの扱いは §6 / §10 を参照。
@@ -172,6 +188,7 @@
 | `INVALID_PAYLOAD` | payload がスキーマ不正 | 各種 | — |
 | `START_CONDITION_UNMET` | 開始条件未達（最小人数・ボス未選択等） | `START_GAME` | — |
 | `CPU_NOT_ALLOWED` | `ALLOW_CPU=false` の環境で CPU 操作を実行 | `ADD_CPU`/`REMOVE_CPU` | — |
+| `SERVICE_UNAVAILABLE` | MongoDB 等の永続化層が利用不可 | `GET /rooms/{code}/matches` | — |
 
 ### 4.2 開始条件と alive 初期集合
 `START_GAME` の可否と、マッチ開始時の生存者集合は次の**単一集合 `S`** で定義する（サーバーはルーム単位ロック配下で再検証し、未達は `START_CONDITION_UNMET`）。クライアントの開始ボタン非活性（`SCREENS.md` §4.4）は UX 補助で、最終検証はサーバー側で行う。
@@ -193,7 +210,8 @@
 - **Hand（列挙）**: `ROCK` / `SCISSORS` / `PAPER`
 - **永続化方針（MVP）**: 途中経過は保存せず、**Match 終了時の確定結果＋最終スコアのみ**を `match_history` コレクションに保存する。MVP では**ルーム単位のマッチ履歴のみ**を対象とし（`room_code` で参照）、`display_name` 横断のグローバルなスコアボード集計は後フェーズ（アカウント連携時）に設計する。
   - `match_history` ドキュメント例: `{ _id, room_code, match_id, rule_type, players: [{ player_id, display_name, is_cpu }], winner_ids, scores, started_at, ended_at }`
-  - インデックス: `room_code` + `ended_at`（降順）でルーム内の履歴を新しい順に取得する。`player_id` は当該ルームの一時 ID であり、ルームをまたいだ同一人物の追跡は MVP では行わない。
+  - インデックス: `room_code` + `ended_at`（降順）でルーム内の履歴を新しい順に取得する。`match_id` にユニークインデックス（二重書き込み防止）。`player_id` は当該ルームの一時 ID であり、ルームをまたいだ同一人物の追跡は MVP では行わない。
+  - **読み取り（Phase 5）**: `GET /rooms/{code}/matches`（§3.1）が MongoDB から一覧を返す。**インメモリのルーム状態とは独立**。ラウンド単位のリプレイ・グローバルスコアボード集計は対象外。
 
 ## 6. ゲーム状態遷移 (FSM)
 - **Room.status**: `WAITING ⇄ IN_GAME`、最終的に `CLOSED`

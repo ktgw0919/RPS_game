@@ -17,6 +17,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.config import get_settings
 from app.core.connection_manager import ConnectionManager
 from app.core.lifecycle import LifecycleManager
+from app.core.match_history import MatchHistoryRepository
 from app.core.rate_limit import SlidingWindowRateLimiter
 from app.core.round_runner import RoundRunner
 from app.core.state_store import InMemoryGameStateStore
@@ -36,7 +37,6 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     app.state.store = InMemoryGameStateStore()
     app.state.connection_manager = ConnectionManager()
-    app.state.round_runner = RoundRunner(app.state.store, app.state.connection_manager)
     app.state.lifecycle = LifecycleManager(app.state.store, app.state.connection_manager, settings)
     app.state.room_create_limiter = SlidingWindowRateLimiter(
         max_events=settings.room_create_rate_max,
@@ -45,14 +45,22 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     database = Database(settings)
     await database.connect()
+    match_history = MatchHistoryRepository(database.db)
     try:
         await database.ping()
+        await match_history.ensure_indexes()
         logger.info("Connected to MongoDB '%s'.", settings.db_name)
     except Exception:
         # Don't crash the app on a transient DB hiccup; live state is in-memory.
         # Persistence (match history) degrades until the DB is reachable again.
         logger.exception("MongoDB ping failed at startup; continuing.")
     app.state.database = database
+    app.state.match_history = match_history
+    app.state.round_runner = RoundRunner(
+        app.state.store,
+        app.state.connection_manager,
+        match_history,
+    )
 
     app.state.lifecycle.start()
     try:

@@ -14,7 +14,7 @@
 
 ## 3. 機能要件 (Functional Requirements)
 
-> 実装フェーズ番号は `TODO.md` の **Phase 1–4** を正とする。本節は製品能力で区切り、対応する実装フェーズを併記する。
+> 実装フェーズ番号は `TODO.md` の **Phase 1–5** を正とする。本節は製品能力で区切り、対応する実装フェーズを併記する。
 
 ### MVP (Minimum Viable Product)（実装フェーズ: Phase 1–2・4）
 まずは最もシンプルな「一斉じゃんけん」をオンラインで完結させる。
@@ -45,6 +45,14 @@
   - CPU は毎ラウンド**サーバーが自動で手を出す**（MVP は完全ランダム。戦略は後フェーズで拡張）。タイムアウト・切断・退室は発生せず、ホストにもならない。
   - この機能は **`ALLOW_CPU`（`.env`）で切替**でき、**本番では無効化を推奨**する（開発/デモ用途のため。詳細は `ARCHITECTURE.md` §3/§5/§11）。
 
+### 対戦履歴の閲覧（実装フェーズ: Phase 5）
+ルーム単位で過去マッチの確定結果を参照する（グローバルスコアボードは対象外）。
+- [x] **対戦履歴の閲覧**
+  - ロビー画面から、当該ルームの過去マッチ一覧を新しい順に表示できる（`ARCHITECTURE.md` §3.1 `GET /rooms/{code}/matches` / `SCREENS.md` §4.6）。
+  - 各履歴にはルール種別・参加者（表示名・CPU 区別）・勝者・得点（該当ルール時）・開始/終了時刻が含まれる。
+  - マッチ終了直後は WS で結果を表示し、ロビー復帰後に REST で履歴を再取得して一覧を更新する。
+  - プロセス再起動やルーム `CLOSED` 後も、MongoDB に保存済みの履歴は `room_code` で取得できる（インメモリ状態に依存しない）。
+
 ### 特殊ルールの実装（実装フェーズ: Phase 3）
 MVP完成後、以下の特殊ルール（モード）を実装する。
 - [ ] **少数派勝利ルール (Minority Rule)**
@@ -61,7 +69,7 @@ MVP完成後、以下の特殊ルール（モード）を実装する。
 - **モバイルファーストのUI/UX:** 参加者は主にスマートフォンで操作することを前提とし、タップしやすい大きなボタンと視認性の高いレイアウト（Tailwind CSS）を採用する。
 - **リアルタイム性:** WebSocketを利用し、手の入力から結果表示までの遅延を最小限に抑える。
 - **耐障害性:** ラウンドはサーバー側タイマーを権威とし、締切までに未提出のプレイヤーは「敗北/脱落」として処理してゲームの進行がストップしないようにする。通信が切断されたプレイヤーはそのマッチ終了まで生存を維持し、再接続で復帰できる。
-- **データ保存:** 対戦履歴・スコアを MongoDB に永続化する。**MVP ではルーム単位のマッチ履歴のみ**を保存し（`room_code` で参照）、`display_name` 横断のグローバルなスコアボードは後フェーズ（アカウント連携時）に設計する。※ `match_history` への書き込みは未実装（DB 接続のみ。`docs/TODO.md`「MVP 残タスク」参照）。
+- **データ保存:** 対戦履歴・スコアを MongoDB に永続化する。**MVP ではルーム単位のマッチ履歴のみ**を保存し（`room_code` で参照）、`display_name` 横断のグローバルなスコアボードは後フェーズ（アカウント連携時）に設計する。マッチ終了時に `match_history` コレクションへ確定結果を書き込み、ロビーから **閲覧**（`GET /rooms/{code}/matches` / `MatchHistoryPanel`）できる（**実装済み**）。
 - **開発/デモ容易性:** 一人でも全ゲームループを検証できるよう CPU プレイヤーを用意する。CPU は `ALLOW_CPU`（`.env`）で有効/無効を切り替えられ、本番では無効化を推奨する。
 
 ## 5. 制約事項 (Constraints)
@@ -69,7 +77,7 @@ MVP完成後、以下の特殊ルール（モード）を実装する。
 - バックエンドのスキーマ定義は **Pydantic v2** を採用し、アプリのライフサイクルは `lifespan` で管理する（`@app.on_event` は使用しない）。
 - 設定値は `python-decouple` を用いて `.env` から読み込む（`DB_URL`, `DB_NAME` は必須。`REDIS_URL`, `ALLOW_CPU` は任意）。`ALLOW_CPU` は開発/デモ用 CPU プレイヤーの有効化フラグ（本番は無効化推奨）。`CORS_ORIGINS` と運用調整値（`HOST_TRANSFER_GRACE_SEC` / `GHOST_TTL_SEC` / `ROOM_IDLE_TTL_SEC` / `ROOM_CREATE_RATE_MAX` / `ROOM_CREATE_RATE_WINDOW_SEC`）も任意（既定値つき・fail-fast 対象外）で `.env` 上書きできる。一方、ハートビート間隔・WS メッセージサイズ上限・CPU 提出遅延・スイープ実行間隔などプロトコル/体感の固定値は `.env` ではなくコード定数（`core/constants.py`）に置く（詳細は `ARCHITECTURE.md` §1/§4/§6/§10/§11）。
 - **ゲーム進行状態の正本は、MVP では単一プロセスのインメモリとする**。状態アクセスはインターフェース越しに抽象化し、Redis は水平スケール時に差し替え可能な任意要素とする（MVP は単一ワーカー前提）。永続化が必要な対戦履歴・スコアのみ MongoDB に保存する。
-- UIフレームワークには React を採用し、**Vite + TypeScript（strict）** で SPA（Single Page Application）として構築する（Create React App は使用しない）。フロントのゲーム状態は React Context + `useReducer` で管理し、REST 取得用の SWR は MVP では導入しない（履歴・スコアボード実装時に導入）。
+- UIフレームワークには React を採用し、**Vite + TypeScript（strict）** で SPA（Single Page Application）として構築する（Create React App は使用しない）。フロントのゲーム状態は React Context + `useReducer` で管理する。**SWR** は **Phase 5**（対戦履歴取得）で導入済み（`useMatchHistory` / `ARCHITECTURE.md` §1）。
 - **MVP の運用前提**: ゲーム進行はインメモリ正本のため uvicorn は単一ワーカーで起動し、**プロセス再起動で進行中のゲーム状態は失われる**ことを許容する（永続化は `match_history` の確定結果のみ）。
 - **品質ツール**: backend は ruff（lint+format）・mypy（型）・pytest、frontend は ESLint + Prettier・TypeScript strict を用い、**GitHub Actions の CI** で lint・型チェック・テストを実行する。
 - **ローカル MongoDB** は `docker-compose` 方式と MongoDB Atlas 方式の両方を README に併記し、`.env`（`.env.example` 同梱）で切り替える。

@@ -106,6 +106,7 @@ class ErrorCode(StrEnum):
     INVALID_PAYLOAD = "INVALID_PAYLOAD"
     START_CONDITION_UNMET = "START_CONDITION_UNMET"
     CPU_NOT_ALLOWED = "CPU_NOT_ALLOWED"
+    SERVICE_UNAVAILABLE = "SERVICE_UNAVAILABLE"
 
 
 # --------------------------------------------------------------------------
@@ -220,6 +221,8 @@ class Match(BaseModel):
     state: MatchState = MatchState.COLLECTING
     config: MatchConfig
     alive_player_ids: list[str] = Field(default_factory=list)
+    # Snapshot of start set S at START_GAME; used for match_history (§6).
+    participant_player_ids: list[str] = Field(default_factory=list)
     scores: dict[str, int] = Field(default_factory=dict)
     current_round_no: int = 0
     # Live round being collected/judged (internal; not part of MatchView).
@@ -343,6 +346,44 @@ class RoomStateResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     room: RoomView
+
+
+class MatchHistoryPlayerEntry(BaseModel):
+    """Participant row in a match history entry (ARCHITECTURE.md §3.1 / §6)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    player_id: str
+    display_name: str
+    is_cpu: bool
+
+
+class MatchHistoryEntry(BaseModel):
+    """One finished match in `GET /rooms/{code}/matches` (ARCHITECTURE.md §3.1)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    match_id: str
+    rule_type: RuleType
+    players: list[MatchHistoryPlayerEntry]
+    winner_ids: list[str] = Field(default_factory=list)
+    scores: dict[str, int] = Field(default_factory=dict)
+    started_at: datetime
+    ended_at: datetime
+
+    @field_serializer("started_at", "ended_at")
+    def _serialize_timestamps(self, value: datetime) -> str:
+        return isoformat_utc(value)
+
+
+class MatchHistoryListResponse(BaseModel):
+    """`GET /rooms/{code}/matches` success body (ARCHITECTURE.md §3.1)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    room_code: str
+    matches: list[MatchHistoryEntry]
+    has_more: bool
 
 
 class ErrorResponse(BaseModel):

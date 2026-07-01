@@ -75,6 +75,9 @@ export type {
   ErrorResponse,
   JoinRequest,
   JoinRoomResponse,
+  MatchHistoryEntry,
+  MatchHistoryListResponse,
+  MatchHistoryPlayerEntry,
   PublicConfigResponse,
   RoomStateResponse,
 } from '@/types/rest';
