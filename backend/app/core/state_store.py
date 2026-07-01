@@ -173,6 +173,10 @@ class GameStateStore(ABC):
         """Record MINORITY -> NORMAL finish transition (§8)."""
 
     @abstractmethod
+    def set_minority_defer_normal_next_match(self, match: Match, *, value: bool = True) -> None:
+        """Record MINORITY NEXT_MATCH timing: switch rule_type to NORMAL after match (§8/§9)."""
+
+    @abstractmethod
     def set_match_state(
         self, match: Match, target: MatchState, *, now: datetime | None = None
     ) -> None:
@@ -352,6 +356,7 @@ class InMemoryGameStateStore(GameStateStore):
     def init_match_for_rule(self, match: Match, config: MatchConfig) -> None:
         """Reset rule-specific fields and apply rule-type defaults (§5 / TODO R0)."""
         match.switched_to_normal_finish = False
+        match.minority_defer_normal_next_match = False
         match.tournament_bracket_round = 0
         match.tournament_active_pairs = []
         match.tournament_segment_rounds = {}
@@ -398,6 +403,9 @@ class InMemoryGameStateStore(GameStateStore):
 
     def set_switched_to_normal_finish(self, match: Match, *, value: bool = True) -> None:
         match.switched_to_normal_finish = value
+
+    def set_minority_defer_normal_next_match(self, match: Match, *, value: bool = True) -> None:
+        match.minority_defer_normal_next_match = value
 
     def set_match_state(
         self, match: Match, target: MatchState, *, now: datetime | None = None

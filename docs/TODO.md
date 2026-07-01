@@ -48,10 +48,10 @@
 
 ### `ws.py` 配線（Step R1）
 
-- [ ] **`START_GAME`**: `min_players_for` を **`can_start(room)`**（`game/start_conditions.py`）に置換。BOSS の `boss_player_id ∈ S` 等を `START_CONDITION_UNMET` で拒否
-- [ ] **`START_GAME` 初期化**: ルール別に match をセットアップ（BOSS: `boss_player_id` コピー、TOURNAMENT: `build_tournament_bracket`、MINORITY: 移行フラグ初期化）
-- [ ] **`SUBMIT_HAND`**: `payload.segment_id` を `RoundRunner.submit_hand` に中継。TOURNAMENT は必須＋ペア所属検証、他ルールは `null` のみ
-- [ ] **付随**: ボス指名プレイヤー退出時に `config.boss_player_id` を `null` 化して `SETTINGS_UPDATE`（§8）。MINORITY `NEXT_MATCH` タイミングで閾値到達時はマッチ終了後ロビー復帰で次回 `rule_type=NORMAL` へ（`RETURN_TO_LOBBY` 経路）
+- [x] **`START_GAME`**: `min_players_for` を **`can_start(room)`**（`game/start_conditions.py`）に置換。BOSS の `boss_player_id ∈ S` 等を `START_CONDITION_UNMET` で拒否
+- [x] **`START_GAME` 初期化**: `start_match` → `init_match_for_rule`（R0）で BOSS / TOURNAMENT / MINORITY をセットアップ
+- [x] **`SUBMIT_HAND`**: `payload.segment_id` を `RoundRunner.submit_hand` に中継。TOURNAMENT は必須＋ペア所属検証、他ルールは `null` のみ（TOURNAMENT 提出本体は R4）
+- [x] **付随**: ボス指名プレイヤー退出時に `config.boss_player_id` を `null` 化して `SETTINGS_UPDATE`（§8）。MINORITY `NEXT_MATCH` は `minority_defer_normal_next_match` フラグで `RETURN_TO_LOBBY` 時に `rule_type=NORMAL` へ（R2 がフラグを立てる）
 
 ### `RoundRunner` — ルール別統合（Step R2–R4）
 

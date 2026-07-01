@@ -241,6 +241,8 @@ class Match(BaseModel):
     boss_player_id: str | None = None
     # MINORITY: threshold reached -> NORMAL judging for remainder of match (§8).
     switched_to_normal_finish: bool = False
+    # MINORITY NEXT_MATCH: after this match ends, next START_GAME uses NORMAL (§8/§9).
+    minority_defer_normal_next_match: bool = False
     # TOURNAMENT: bracket stage and per-segment rounds (§5 / §7.1).
     tournament_bracket_round: int = 0
     tournament_active_pairs: list[TournamentPair] = Field(default_factory=list)

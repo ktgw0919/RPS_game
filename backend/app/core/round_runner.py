@@ -54,6 +54,7 @@ from app.models import (
     RoundAdvanceMode,
     RoundResultPayload,
     RoundStartPayload,
+    RuleType,
     SubmissionUpdatePayload,
     make_envelope,
 )
@@ -108,7 +109,13 @@ class RoundRunner:
         await self._start_round(room, None)
 
     async def submit_hand(
-        self, room: Room, player: Player, round_no: int, hand: Hand
+        self,
+        room: Room,
+        player: Player,
+        round_no: int,
+        hand: Hand,
+        *,
+        segment_id: str | None = None,
     ) -> ErrorCode | None:
         """Accept a hand for the current round; early-finish when all submit (§7).
 
@@ -116,15 +123,20 @@ class RoundRunner:
         (success is fully handled here: SUBMISSION_UPDATE broadcast and, when the
         whole alive set has submitted, cancelling the timer and judging).
         """
-        segment_id: str | None = None
         lock = self._store.room_lock(room.room_code)
         submission_update: dict[str, Any] | None = None
         all_submitted = False
         current_round_no = 0
+        resolved_segment_id: str | None = None
         async with lock:
             match = room.match
             if match is None or room.status is not RoomStatus.IN_GAME:
                 return ErrorCode.INVALID_STATE
+            if match.rule_type is RuleType.TOURNAMENT:
+                return ErrorCode.INVALID_STATE
+            if segment_id is not None:
+                return ErrorCode.INVALID_STATE
+            resolved_segment_id = None
             if match.state is not MatchState.COLLECTING or match.current_round is None:
                 return ErrorCode.INVALID_STATE
             if player.is_spectator or player.player_id not in match.alive_player_ids:
@@ -136,15 +148,15 @@ class RoundRunner:
             self._store.touch(room)
             rnd = match.current_round
             submitted = [pid for pid in match.alive_player_ids if pid in rnd.submissions]
-            submission_update = self._submission_update_msg(match, submitted, segment_id)
+            submission_update = self._submission_update_msg(match, submitted, resolved_segment_id)
             all_submitted = len(submitted) >= len(match.alive_player_ids)
             current_round_no = match.current_round_no
 
         assert submission_update is not None
         await self._manager.broadcast(room.room_code, submission_update)
         if all_submitted:
-            self._cancel_key((room.room_code.upper(), segment_id))
-            self._spawn(self._resolve_round(room, segment_id, current_round_no))
+            self._cancel_key((room.room_code.upper(), resolved_segment_id))
+            self._spawn(self._resolve_round(room, resolved_segment_id, current_round_no))
         return None
 
     async def next_round(self, room: Room, player: Player) -> ErrorCode | None:

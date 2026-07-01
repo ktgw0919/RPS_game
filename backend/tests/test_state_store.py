@@ -231,6 +231,7 @@ def test_start_match_normal_initializes_special_rule_defaults() -> None:
     store, room = _store_with_two()
     match = _started_match(store, room)
     assert match.switched_to_normal_finish is False
+    assert match.minority_defer_normal_next_match is False
     assert match.tournament_bracket_round == 0
     assert match.tournament_active_pairs == []
     assert match.tournament_segment_rounds == {}
@@ -287,6 +288,13 @@ def test_apply_score_deltas_accumulates() -> None:
     store.apply_score_deltas(match, [("h", 1), ("p2", 2)])
     store.apply_score_deltas(match, [("h", 1)])
     assert match.scores == {"h": 2, "p2": 2}
+
+
+def test_set_minority_defer_normal_next_match() -> None:
+    store, room = _store_with_two()
+    match = _started_match(store, room)
+    store.set_minority_defer_normal_next_match(match)
+    assert match.minority_defer_normal_next_match is True
 
 
 def test_set_switched_to_normal_finish() -> None:
