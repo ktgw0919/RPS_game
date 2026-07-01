@@ -328,7 +328,7 @@
 ## 11. 開発環境・品質ツール・運用前提
 - **品質ツール**:
   - backend: **ruff**（lint + format）、**mypy**（型チェック）、**pytest**。テストは3層で行う: ①判定エンジン/各 `rules` を**純粋関数として網羅**、②FSM 遷移（COLLECTING→JUDGING→…）を状態ストア単体で検証、③**WebSocket 結合テスト**（`pytest-asyncio` + Starlette テストクライアント）で締切到達・早期確定・再接続復元・`SESSION_REPLACED`・二重判定防止の主要シナリオを検証。
-  - frontend: **ESLint + Prettier**、**TypeScript strict** モード。**Phase 6** で Vitest（`gameReducer`）と任意 E2E を追加予定（`TODO.md`）。
+  - frontend: **ESLint + Prettier**、**TypeScript strict** モード、**Vitest**（`gameReducer` ユニットテスト・`npm test`）。任意 E2E は Phase 6 Step 3 予定（`TODO.md`）。
   - **CI: GitHub Actions** で lint・型チェック・テストを自動実行する。
 - **開発/デモ用 CPU**: `.env` の `ALLOW_CPU`（既定 `true`）で有効化する。ホストはロビーで `ADD_CPU`/`REMOVE_CPU`（§4）により CPU を増減でき、一人でも全ゲームループ（提出→判定→結果→次ラウンド/終了）を確認できる。**本番は `ALLOW_CPU=false` を推奨**し、`.env.example` にも明記する。
 - **ローカル MongoDB**: 次の2方式を README に併記し、`.env`（`DB_URL`, `DB_NAME`）で切り替える。
