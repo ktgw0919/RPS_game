@@ -93,7 +93,7 @@
 
 ### Phase 6 — 品質・UX（推奨・次フェーズ）
 
-- [ ] **フロント回帰テスト**: `gameReducer` の Vitest（`ROUND_START` ブートストラップ等）。CI に `npm test` 追加
+- [x] **フロント回帰テスト**: `gameReducer` の Vitest（`ROUND_START` ブートストラップ等）。CI に `npm test` 追加
 - [ ] **操作フィードバック**: `START_GAME` / `UPDATE_SETTINGS` 失敗時のエラー表示。WebSocket 未接続時のホスト操作ガード
 - [ ] **（任意）E2E**: Playwright による主要導線のスモーク
 - [ ] **（任意）TOURNAMENT**: 他ペアの結果サマリー表示（`SCREENS.md` §4.2）

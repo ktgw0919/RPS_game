@@ -95,7 +95,7 @@
 > **MVP 製品要件（Phase 1–5 + MVP 残タスク）は完了**。本フェーズは回帰防止・操作体験の仕上げ・任意のブラウザテストを目的とする。  
 > **推奨実装順**: Step 1（reducer テスト）→ Step 2（エラー・接続 UX）→ Step 3（E2E・任意）→ Step 4（TOURNAMENT UI 仕上げ・任意）。
 
-- [ ] **Step 1 — `gameReducer` ユニットテスト**: Vitest を導入し、少なくとも次を CI で検証する。①`START_GAME` 直後の初回 `ROUND_START`（`match === null` のブートストラップ）②TOURNAMENT の `segment_id` フィルタ（2 ラウンド目以降）③`RETURN_TO_LOBBY` 後の state リセット。`npm test` を GitHub Actions frontend ジョブに追加
+- [x] **Step 1 — `gameReducer` ユニットテスト**: Vitest を導入し、少なくとも次を CI で検証する。①`START_GAME` 直後の初回 `ROUND_START`（`match === null` のブートストラップ）②TOURNAMENT の `segment_id` フィルタ（2 ラウンド目以降）③`RETURN_TO_LOBBY` 後の state リセット。`npm test` を GitHub Actions frontend ジョブに追加
 - [ ] **Step 2 — ホスト操作のエラー・接続 UX**: 非致命 `ERROR`（例: `START_CONDITION_UNMET` / `INVALID_STATE`）を `SessionNotices` または開始ボタン付近に表示。WebSocket 未接続時は `UPDATE_SETTINGS` 等のホスト操作も無効化または警告（開始ボタンと同様のパターン）。`ROOM_CLOSED` 解散時のメッセージを明確化
 - [ ] **Step 3 — フロント E2E**（任意）: Playwright 等でスモークシナリオ（ルーム作成 → CPU 追加 → 開始 → 1 ラウンド、QR 表示、退室）。backend + frontend を起動する CI ジョブまたは nightly
 - [ ] **Step 4 — TOURNAMENT UI 仕上げ**（任意）: `SCREENS.md` §4.2 の「他ペア結果サマリー」。観戦・待機中プレイヤー向けに他 `segment_id` のラウンド結果を読み取り専用で表示
