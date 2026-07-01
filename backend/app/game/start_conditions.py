@@ -11,6 +11,7 @@ committing the match (ARCHITECTURE.md §4/§7.1).
 
 from __future__ import annotations
 
+from app.game.rules.boss_battle import boss_start_ok
 from app.models import ConnectionState, Room, RuleType
 
 # Minimum players to start, by rule (ARCHITECTURE.md §4.2). MVP enables NORMAL;
@@ -44,4 +45,9 @@ def min_players_for(rule_type: RuleType) -> int:
 
 def can_start(room: Room) -> bool:
     """True if the room's S meets the minimum-players gate for its rule (§4.2)."""
-    return len(eligible_player_ids(room)) >= min_players_for(room.config.rule_type)
+    eligible = eligible_player_ids(room)
+    if len(eligible) < min_players_for(room.config.rule_type):
+        return False
+    if room.config.rule_type is RuleType.BOSS:
+        return boss_start_ok(eligible, room.config.boss_player_id)
+    return True
