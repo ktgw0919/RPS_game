@@ -38,10 +38,12 @@ from app.core.state_store import GameStateStore
 from app.game.cpu import compute_submit_delay, pick_random_hand
 from app.game.draw_resolution import (
     RoundProgression,
+    resolve_after_boss_round,
     resolve_after_minority_round,
     resolve_after_normal_round,
 )
 from app.game.engine import RoundOutcome, judge_normal_round
+from app.game.rules.boss_battle import BossRoundOutcome, judge_boss_round
 from app.game.rules.minority import effective_judging_rule, judge_minority_round
 from app.models import (
     CpuStrategy,
@@ -296,6 +298,8 @@ class RoundRunner:
             result_display_sec = config.result_display_sec
 
             self._apply_progression_flags(match, progression)
+            if progression.score_deltas:
+                self._store.apply_score_deltas(match, list(progression.score_deltas))
             match.draw_round_count = progression.draw_round_count
             eliminated = list(progression.eliminated_player_ids)
             new_alive = list(progression.alive_player_ids)
@@ -305,7 +309,9 @@ class RoundRunner:
 
             self._store.set_alive(match, new_alive)
             self._store.set_match_state(match, MatchState.ROUND_RESULT)
-            messages.append(self._round_result_msg(rnd, outcome, new_alive, eliminated, segment_id))
+            messages.append(
+                self._round_result_msg(match, rnd, outcome, new_alive, eliminated, segment_id)
+            )
             if ended:
                 assert reason is not None
                 self._store.finalize_match(match, winner_ids=winners_final, now=now)
@@ -330,6 +336,8 @@ class RoundRunner:
             return effective_judging_rule(
                 match.rule_type, switched_to_normal_finish=match.switched_to_normal_finish
             )
+        if match.rule_type is RuleType.BOSS:
+            return RuleType.BOSS
         return RuleType.NORMAL
 
     def _judge_and_progress(
@@ -338,7 +346,8 @@ class RoundRunner:
         alive = match.alive_player_ids
         subs = rnd.submissions
         config = match.config
-        if self._judging_rule(match) is RuleType.MINORITY:
+        rule = self._judging_rule(match)
+        if rule is RuleType.MINORITY:
             outcome = judge_minority_round(alive, subs)
             progression = resolve_after_minority_round(
                 outcome,
@@ -347,10 +356,35 @@ class RoundRunner:
                 config,
                 switched_to_normal_finish=match.switched_to_normal_finish,
             )
+        elif rule is RuleType.BOSS:
+            boss_id = match.boss_player_id
+            if boss_id is None:
+                boss_outcome = BossRoundOutcome(is_draw=True)
+            else:
+                boss_hand = subs.get(boss_id)
+                if boss_hand is None:
+                    boss_outcome = BossRoundOutcome(is_draw=True)
+                else:
+                    boss_outcome = judge_boss_round(alive, boss_id, boss_hand, subs)
+            progression = resolve_after_boss_round(
+                boss_outcome,
+                alive,
+                boss_id or "",
+                match.draw_round_count,
+                config.max_draw_rounds,
+            )
+            outcome = RoundOutcome(is_draw=boss_outcome.is_draw, winner_ids=boss_outcome.winner_ids)
         else:
             outcome = judge_normal_round(alive, subs)
             progression = resolve_after_normal_round(outcome, alive, match.draw_round_count, config)
         return outcome, progression
+
+    def _public_alive_player_ids(self, match: Match, alive_player_ids: list[str]) -> list[str]:
+        """Alive competitors for broadcast (§8: BOSS excludes the boss from alive lists)."""
+        boss_id = match.boss_player_id
+        if match.rule_type is RuleType.BOSS and boss_id is not None:
+            return [pid for pid in alive_player_ids if pid != boss_id]
+        return list(alive_player_ids)
 
     def _apply_progression_flags(self, match: Match, progression: RoundProgression) -> None:
         if progression.switched_to_normal_finish and not match.switched_to_normal_finish:
@@ -427,29 +461,32 @@ class RoundRunner:
 
     def _round_result_msg(
         self,
+        match: Match,
         rnd: Round,
         outcome: RoundOutcome,
         alive_player_ids: list[str],
         eliminated_player_ids: list[str],
         segment_id: str | None,
     ) -> dict[str, Any]:
+        scores = dict(match.scores) if match.rule_type is RuleType.BOSS else {}
         payload = RoundResultPayload(
             round_no=rnd.round_no,
             hands=dict(rnd.submissions),
             is_draw=outcome.is_draw,
             winner_ids=list(outcome.winner_ids),
             eliminated_player_ids=eliminated_player_ids,
-            alive_player_ids=alive_player_ids,
-            scores={},  # NORMAL has no scores (§4 scores note)
+            alive_player_ids=self._public_alive_player_ids(match, alive_player_ids),
+            scores=scores,
             segment_id=segment_id,
         )
         return make_envelope(MessageType.ROUND_RESULT, payload.model_dump(mode="json"))
 
     def _match_end_msg(self, match: Match, reason: MatchEndReason) -> dict[str, Any]:
+        scores = dict(match.scores) if match.rule_type is RuleType.BOSS else {}
         payload = MatchEndPayload(
             match_id=match.match_id,
             winner_ids=list(match.winner_ids),
-            scores={},
+            scores=scores,
             reason=reason,
         )
         return make_envelope(MessageType.MATCH_END, payload.model_dump(mode="json"))

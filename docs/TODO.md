@@ -58,7 +58,7 @@
 `_resolve_round` にルール別ディスパッチ（`judge_*` + `resolve_after_*`）を追加。NORMAL の既存挙動は回帰テストで維持。
 
 - [x] **Step R2 — MINORITY**: 単一区画（`segment_id=null`）。`effective_judging_rule` で `judge_minority_round` / `judge_normal_round` を切替。`resolve_after_minority_round` と `switched_to_normal_finish` / `minority_defer_normal_next_match` 更新
-- [ ] **Step R3 — BOSS**: 期待提出者＝alive 全員（ボス含む）。`judge_boss_round` + `resolve_after_boss_round`。`ROUND_RESULT.scores` に加点反映、`hands` にボス手を含める（`winner_ids` はボス除外）
+- [x] **Step R3 — BOSS**: 期待提出者＝alive 全員（ボス含む）。`judge_boss_round` + `resolve_after_boss_round`。`ROUND_RESULT.scores` に加点反映、`hands` にボス手を含める（`winner_ids` はボス除外）
 - [ ] **Step R4 — TOURNAMENT**: `segment_id` 単位の並行タイマー（§7.1、キー `(room, segment_id)` は既存）。アクティブペアごとに `ROUND_START`（`alive_player_ids` はペアメンバー、`expected_count=2`）。区画ごと `_resolve_round` → ステージ完了バリア → `collect_round_winners` / `next_bracket_round`。bye は `ROUND_START` 不要。`Match.state` はステージ集約（§7.1 注記）。`MatchView` / `_match_view` は viewer の所属ペアの `deadline_at` を返す拡張
 
 ### 検証・フロント（Step R5–R6）
