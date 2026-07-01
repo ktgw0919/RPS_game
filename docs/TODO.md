@@ -15,7 +15,7 @@
 > 雛形には WebSocket が無いため、この層は新規設計する。
 - [x] Step 1: `core/connection_manager.py` に `ConnectionManager` を実装し、`routers/ws.py` で接続・切断・ルーム単位のブロードキャストを扱う。**トークンは接続直後の最初の `JOIN` メッセージで提示**（`?token=` クエリは不採用）し検証する。最初が `JOIN` でない/未知トークンは `INVALID_TOKEN` で切断。同一トークンの再接続は既存プレイヤーへ再紐付けし、接続直後に `STATE_SYNC` でスナップショットを返す
 - [x] Step 2: `core/state_store.py` に `GameStateStore` インターフェースと**インメモリ実装**を作り、ゲーム進行状態をこの抽象越しに読み書きする（正本はインメモリ）
-- [ ] Step 3:（任意・スケール時）`GameStateStore` の Redis 実装と複数 WebSocket 間の pub/sub を追加する。MVP では未実装でよい
+- [ ] Step 3:（任意・スケール時）`GameStateStore` の Redis 実装と複数 WebSocket 間の pub/sub を追加する。具体タスクは **Phase 8** を参照
 - [x] Step 4: ドメインモデル（`Room` / `Player` / `Match` / `Round` / `MatchConfig` / `Hand`）と Match 状態遷移（FSM: COLLECTING → JUDGING → ROUND_RESULT → 継続/MATCH_END）を `models.py` と状態ストアに実装する。MVP は `rule_type = NORMAL` のみ
 - [x] Step 5: ハートビート（`PING`/`PONG`・間隔 25s / タイムアウト 60s は front/back 共有定数）と封筒形式 `{type, payload, v}` の WS メッセージ I/O を整備する
 - [x] Step 6: ホスト設定（`UPDATE_SETTINGS` → `SETTINGS_UPDATE`）を実装する。制限時間・進行モード（自動/手動）・あいこ上限などを `MatchConfig` で管理し、`START_GAME` で確定する
@@ -78,11 +78,48 @@
 - [x] Step 3: ロビーに `MatchHistoryPanel`（`SCREENS.md` §4.6）。`WAITING` 表示時・`RETURN_TO_LOBBY` 後に再取得。`MATCH_END` 画面には履歴を出さない（直前結果は WS の `MATCH_END` で表示済み）
 - [x] Step 4: `REQUIREMENTS.md` の対戦履歴閲覧を `[x]`、`README.md` 実装状況を更新
 
-## MVP 残タスク（Phase 1–4 外の仕上げ）
+## MVP 残タスク（Phase 1–5 外の仕上げ）
 
-設計上は MVP 要件だが、上記フェーズの Step には含まれていない項目。**必須はすべて完了**し、下記の任意 E2E のみ残る。
+設計上は MVP 要件だが、上記フェーズの Step には含まれていない項目。**必須はすべて完了**（2026-07 時点）。
 
 - [x] **`match_history` 永続化**（`ARCHITECTURE.md` §6）: マッチ終了時に MongoDB へ確定結果を保存（`core/match_history.py`）
 - [x] **QR コード共有**（`SCREENS.md` §4.1）: 参加リンク（`/join/:code`）の QR をモーダル表示（`ShareQrModal` / `react-qr-code`）。コード・リンクのコピーは `SharePanel` に実装済み
 - [x] **ルーム操作 UI**（`SCREENS.md` §5）: `RoomActionsPanel`・`useExitRoom`・退室／別ルーム参加／新規作成（試合中は移動系非活性）。WS の `LEAVE` は実装済み
-- [ ] **フロント E2E テスト**（任意）: Playwright 等でのブラウザ結合テスト
+
+> **今後の実装**は下記 **Phase 6 以降**を正とする。任意のフロント E2E は Phase 6 Step 3 へ移管。
+
+---
+
+## Phase 6: Quality, UX & E2E（post-MVP）
+
+> **MVP 製品要件（Phase 1–5 + MVP 残タスク）は完了**。本フェーズは回帰防止・操作体験の仕上げ・任意のブラウザテストを目的とする。  
+> **推奨実装順**: Step 1（reducer テスト）→ Step 2（エラー・接続 UX）→ Step 3（E2E・任意）→ Step 4（TOURNAMENT UI 仕上げ・任意）。
+
+- [ ] **Step 1 — `gameReducer` ユニットテスト**: Vitest を導入し、少なくとも次を CI で検証する。①`START_GAME` 直後の初回 `ROUND_START`（`match === null` のブートストラップ）②TOURNAMENT の `segment_id` フィルタ（2 ラウンド目以降）③`RETURN_TO_LOBBY` 後の state リセット。`npm test` を GitHub Actions frontend ジョブに追加
+- [ ] **Step 2 — ホスト操作のエラー・接続 UX**: 非致命 `ERROR`（例: `START_CONDITION_UNMET` / `INVALID_STATE`）を `SessionNotices` または開始ボタン付近に表示。WebSocket 未接続時は `UPDATE_SETTINGS` 等のホスト操作も無効化または警告（開始ボタンと同様のパターン）。`ROOM_CLOSED` 解散時のメッセージを明確化
+- [ ] **Step 3 — フロント E2E**（任意）: Playwright 等でスモークシナリオ（ルーム作成 → CPU 追加 → 開始 → 1 ラウンド、QR 表示、退室）。backend + frontend を起動する CI ジョブまたは nightly
+- [ ] **Step 4 — TOURNAMENT UI 仕上げ**（任意）: `SCREENS.md` §4.2 の「他ペア結果サマリー」。観戦・待機中プレイヤー向けに他 `segment_id` のラウンド結果を読み取り専用で表示
+
+## Phase 7: 本番運用・デプロイ（任意）
+
+> 公開デモ・本番ホスティング向け。プロトコル変更は行わず運用ドキュメントと設定の整備が中心。
+
+- [ ] **Step 1 — デプロイ手順**: HTTPS / `wss`、リバースプロキシ（WebSocket アップグレード）、単一 uvicorn ワーカー前提を README または `docs/DEPLOY.md` に記載（`ARCHITECTURE.md` §11 トランスポート暗号化と整合）
+- [ ] **Step 2 — 本番設定チェックリスト**: `ALLOW_CPU=false`、`CORS_ORIGINS`、MongoDB Atlas、`ROOM_*` TTL の推奨値。`.env.example` への本番向けコメント追記
+
+## Phase 8: 水平スケール（任意）
+
+> Phase 2 Step 3 の具体化。`ARCHITECTURE.md` §1 / §7 の Redis・分散ロック注記に対応。
+
+- [ ] **Step 1 — Redis `GameStateStore`**: `pyproject.toml` extras `[redis]` を用いた実装。インメモリ API と同一インターフェース
+- [ ] **Step 2 — WS pub/sub**: 複数プロセス間でルーム単位ブロードキャストを fan-out（`ConnectionManager` 拡張または別プロセス向けブリッジ）
+- [ ] **Step 3 — 分散ラウンドロック**: ラウンド判定の `asyncio.Lock` を Redis ロック等に置換（二重判定防止をプロセス横断で維持）
+
+## Phase 9: 製品拡張（将来）
+
+> アカウント・グローバル機能・ゲーム拡張。**着手時に `REQUIREMENTS.md` §6 と `ARCHITECTURE.md` を設計更新してから実装**する。
+
+- [ ] **アカウント連携**: 外部 ID と `playerId` の紐付け。`display_name` 横断のグローバルスコアボード（`REQUIREMENTS.md` / `ARCHITECTURE.md` §3.1 後フェーズ）
+- [ ] **CPU 戦略拡張**: `CpuStrategy` に mimic / 難易度（`ARCHITECTURE.md` §4 `CpuStrategy` 注記）
+- [ ] **履歴 API 強化**: `GET /rooms/{code}/matches` の在室者限定認可（トークン検証）。任意で `GET /rooms/{code}/matches/{match_id}` 単件詳細
+- [ ] **WS レート制限**: トークンバケット型の濫用対策（`ARCHITECTURE.md` §11）。ルーム作成レート制限の強化と合わせて検討

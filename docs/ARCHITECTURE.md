@@ -11,7 +11,7 @@
 - **Database**: MongoDB（**PyMongo Async**: `AsyncMongoClient` を使う公式の非同期 API。Motor は将来非推奨方向のため新規採用しない）。接続は `database.py` に分離。対戦履歴・スコアの永続化に利用
 - **State (ゲーム進行状態)**: **MVP では単一プロセスのインメモリ**（`ConnectionManager` / 状態ストアが保持）。
   - 状態アクセスは `GameStateStore` のような**インターフェース越しに抽象化**し、後から実装を差し替え可能にする。
-  - **Redis は任意（スケール時のみ）**: 水平スケール（複数プロセス/ワーカー）で状態共有・WebSocket 間 pub/sub が必要になった段階で `GameStateStore` の Redis 実装を追加する。
+  - **Redis は任意（スケール時のみ）**: 水平スケール（複数プロセス/ワーカー）で状態共有・WebSocket 間 pub/sub が必要になった段階で `GameStateStore` の Redis 実装を追加する（`TODO.md` Phase 8）。
   - ⚠️ 制約: インメモリ実装のままだと **uvicorn の `--workers` を 2 以上にすると状態が壊れる**（プロセス間で共有されない）。MVP は単一ワーカー前提とし、複数ワーカー時は Redis 実装が前提。
 - **Config**: `python-decouple` で `.env`（`DB_URL`, `DB_NAME` は必須、`REDIS_URL`, `ALLOW_CPU` は任意）を読み込む。設定は単一の `Settings` オブジェクトに集約し、**起動時に必須値（`DB_URL`/`DB_NAME`）の欠落・型不正を検査して欠落なら即例外で起動失敗（fail-fast）**する。`ALLOW_CPU`（bool・既定 `true`）は開発/デモ用 CPU プレイヤーの有効化フラグで、**本番は `false` を推奨**する。
   - **CORS**: `CORS_ORIGINS`（任意・カンマ区切り、既定は開発用ローカルオリジン）で許可オリジンを設定する。
@@ -328,7 +328,7 @@
 ## 11. 開発環境・品質ツール・運用前提
 - **品質ツール**:
   - backend: **ruff**（lint + format）、**mypy**（型チェック）、**pytest**。テストは3層で行う: ①判定エンジン/各 `rules` を**純粋関数として網羅**、②FSM 遷移（COLLECTING→JUDGING→…）を状態ストア単体で検証、③**WebSocket 結合テスト**（`pytest-asyncio` + Starlette テストクライアント）で締切到達・早期確定・再接続復元・`SESSION_REPLACED`・二重判定防止の主要シナリオを検証。
-  - frontend: **ESLint + Prettier**、**TypeScript strict** モード。
+  - frontend: **ESLint + Prettier**、**TypeScript strict** モード。**Phase 6** で Vitest（`gameReducer`）と任意 E2E を追加予定（`TODO.md`）。
   - **CI: GitHub Actions** で lint・型チェック・テストを自動実行する。
 - **開発/デモ用 CPU**: `.env` の `ALLOW_CPU`（既定 `true`）で有効化する。ホストはロビーで `ADD_CPU`/`REMOVE_CPU`（§4）により CPU を増減でき、一人でも全ゲームループ（提出→判定→結果→次ラウンド/終了）を確認できる。**本番は `ALLOW_CPU=false` を推奨**し、`.env.example` にも明記する。
 - **ローカル MongoDB**: 次の2方式を README に併記し、`.env`（`DB_URL`, `DB_NAME`）で切り替える。
@@ -339,5 +339,5 @@
   - **プロセス再起動・クラッシュで進行中のゲーム状態は失われる**（永続化するのは `match_history` の確定結果のみ）。これは MVP として許容する。
   - **CORS**: 許可オリジンは `.env` で設定可能にし、開発はローカル（Vite dev server）を許可する。
   - ルーム作成エンドポイントには簡易なレート制限を設け、スパム作成を抑止する（後続で強化）。
-  - **WS 濫用対策（MVP は軽量）**: 1 メッセージのサイズ上限（**8KB＝8192 byte 超は破棄** = `WS_MAX_MESSAGE_BYTES`・`core/constants.py` 定数）を設け、不正/巨大 payload で接続を保護する。同一プレイヤーの**短時間の連打は無視**（状態を変えずカウントもしない）にとどめ、本格的なトークンバケット型レート制限は後フェーズで導入する。
-  - **トランスポート暗号化**: トークンを WS の `JOIN` で平文送信するため、**本番は `wss`/HTTPS を必須**とする（リバースプロキシ等で TLS 終端）。ローカル開発は `ws`/HTTP を許容する。
+  - **WS 濫用対策（MVP は軽量）**: 1 メッセージのサイズ上限（**8KB＝8192 byte 超は破棄** = `WS_MAX_MESSAGE_BYTES`・`core/constants.py` 定数）を設け、不正/巨大 payload で接続を保護する。同一プレイヤーの**短時間の連打は無視**（状態を変えずカウントもしない）にとどめ、本格的なトークンバケット型レート制限は `TODO.md` Phase 9 で導入する。
+  - **トランスポート暗号化**: トークンを WS の `JOIN` で平文送信するため、**本番は `wss`/HTTPS を必須**とする（リバースプロキシ等で TLS 終端）。手順は `TODO.md` Phase 7。
