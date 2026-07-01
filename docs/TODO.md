@@ -43,8 +43,8 @@
 
 ### 前提 — `Match` / `state_store`（Step R0）
 
-- [ ] **`Match` 状態拡張**（`models.py`）: `switched_to_normal_finish`（MINORITY→NORMAL 移行済み）、`tournament_bracket_round` / `tournament_active_pairs` / `tournament_segment_rounds`（TOURNAMENT 区画別 `Round`）。`boss_player_id` は `START_GAME` 時に `config` からコピー
-- [ ] **`state_store` API**: ルール別 `start_match` 後初期化、`begin_segment_round` / `save_segment_submission`（TOURNAMENT）、`apply_score_deltas`（BOSS）、`set_switched_to_normal_finish`
+- [x] **`Match` 状態拡張**（`models.py`）: `switched_to_normal_finish`（MINORITY→NORMAL 移行済み）、`tournament_bracket_round` / `tournament_active_pairs` / `tournament_segment_rounds`（TOURNAMENT 区画別 `Round`）。`boss_player_id` は `start_match` → `init_match_for_rule` で BOSS 時に `config` からコピー
+- [x] **`state_store` API**: `init_match_for_rule`（`start_match` 内で呼び出し）、`begin_segment_round` / `save_segment_submission` / `mark_segment_judged`（TOURNAMENT）、`apply_score_deltas`（BOSS）、`set_switched_to_normal_finish`
 
 ### `ws.py` 配線（Step R1）
 

@@ -17,6 +17,7 @@ from datetime import datetime
 
 from app.core.constants import ROOM_CODE_MAX_GEN_ATTEMPTS
 from app.core.security import verify_token
+from app.game.rules.tournament import build_tournament_bracket
 from app.models import (
     ConnectionState,
     Hand,
@@ -27,6 +28,8 @@ from app.models import (
     Room,
     RoomStatus,
     Round,
+    RuleType,
+    TournamentPair,
 )
 from app.utils import generate_room_code, utcnow
 
@@ -133,9 +136,41 @@ class GameStateStore(ABC):
         """Create a Match in COLLECTING and move the room to IN_GAME (§4.2/§6).
 
         `alive_player_ids` is the start-condition set S (§4.2). `now` is injected
-        for deterministic testing. This only sets up the match; the first
-        ROUND_START and the round timer are issued in Phase 2 Step 9.
+        for deterministic testing. Calls `init_match_for_rule` before return.
         """
+
+    @abstractmethod
+    def init_match_for_rule(self, match: Match, config: MatchConfig) -> None:
+        """Initialize rule-specific match fields after `start_match` (TODO R0/R1)."""
+
+    @abstractmethod
+    def begin_segment_round(
+        self,
+        match: Match,
+        segment_id: str,
+        *,
+        round_no: int,
+        deadline_at: datetime,
+    ) -> Round:
+        """Open a TOURNAMENT segment round (§5 / §7.1)."""
+
+    @abstractmethod
+    def save_segment_submission(
+        self, match: Match, segment_id: str, player_id: str, hand: Hand
+    ) -> None:
+        """Store/overwrite a hand for a TOURNAMENT segment round (§7)."""
+
+    @abstractmethod
+    def mark_segment_judged(self, match: Match, segment_id: str, *, now: datetime) -> None:
+        """Stamp `judged_at` on a TOURNAMENT segment round (§7.1)."""
+
+    @abstractmethod
+    def apply_score_deltas(self, match: Match, deltas: list[tuple[str, int]]) -> None:
+        """Add score deltas to `match.scores` (BOSS rule, §8)."""
+
+    @abstractmethod
+    def set_switched_to_normal_finish(self, match: Match, *, value: bool = True) -> None:
+        """Record MINORITY -> NORMAL finish transition (§8)."""
 
     @abstractmethod
     def set_match_state(
@@ -311,7 +346,58 @@ class InMemoryGameStateStore(GameStateStore):
         room.match = match
         room.status = RoomStatus.IN_GAME
         room.last_active_at = now
+        self.init_match_for_rule(match, config)
         return match
+
+    def init_match_for_rule(self, match: Match, config: MatchConfig) -> None:
+        """Reset rule-specific fields and apply rule-type defaults (§5 / TODO R0)."""
+        match.switched_to_normal_finish = False
+        match.tournament_bracket_round = 0
+        match.tournament_active_pairs = []
+        match.tournament_segment_rounds = {}
+        match.boss_player_id = None
+
+        if config.rule_type is RuleType.BOSS:
+            match.boss_player_id = config.boss_player_id
+        elif config.rule_type is RuleType.TOURNAMENT:
+            bracket = build_tournament_bracket(match.alive_player_ids)
+            match.tournament_active_pairs = [
+                TournamentPair(segment_id=pair.segment_id, players=pair.players)
+                for pair in bracket.first_round
+            ]
+
+    def begin_segment_round(
+        self,
+        match: Match,
+        segment_id: str,
+        *,
+        round_no: int,
+        deadline_at: datetime,
+    ) -> Round:
+        rnd = Round(round_no=round_no, deadline_at=deadline_at)
+        match.tournament_segment_rounds[segment_id] = rnd
+        match.current_round_no = round_no
+        return rnd
+
+    def save_segment_submission(
+        self, match: Match, segment_id: str, player_id: str, hand: Hand
+    ) -> None:
+        rnd = match.tournament_segment_rounds.get(segment_id)
+        if rnd is None:
+            return
+        rnd.submissions[player_id] = hand
+
+    def mark_segment_judged(self, match: Match, segment_id: str, *, now: datetime) -> None:
+        rnd = match.tournament_segment_rounds.get(segment_id)
+        if rnd is not None:
+            rnd.judged_at = now
+
+    def apply_score_deltas(self, match: Match, deltas: list[tuple[str, int]]) -> None:
+        for player_id, delta in deltas:
+            match.scores[player_id] = match.scores.get(player_id, 0) + delta
+
+    def set_switched_to_normal_finish(self, match: Match, *, value: bool = True) -> None:
+        match.switched_to_normal_finish = value
 
     def set_match_state(
         self, match: Match, target: MatchState, *, now: datetime | None = None
