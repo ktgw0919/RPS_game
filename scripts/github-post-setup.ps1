@@ -1,35 +1,37 @@
-# GitHub 初回セットアップの残り（gh auth login 後に実行）
+# GitHub post-setup (run after: gh auth login)
 # Usage: .\scripts\github-post-setup.ps1
 
 $ErrorActionPreference = "Stop"
 $Repo = "ktgw0919/RPS_game"
 
 if (-not (Get-Command gh -ErrorAction SilentlyContinue)) {
-    Write-Error "GitHub CLI (gh) が見つかりません。winget install GitHub.cli を実行してください。"
+    Write-Error "GitHub CLI (gh) not found. Run: winget install GitHub.cli"
 }
 
 gh auth status 2>&1 | Out-Null
 if ($LASTEXITCODE -ne 0) {
-    Write-Error "gh に未ログインです。gh auth login を実行してください。"
+    Write-Error "Not logged in to gh. Run: gh auth login"
 }
 
 Write-Host "==> Labels"
 $labels = @(
-    @{ name = "enhancement"; color = "a2eeef"; description = "新機能・TODO Step" },
-    @{ name = "bug"; color = "d73a4a"; description = "不具合" },
-    @{ name = "docs"; color = "0075ca"; description = "ドキュメント" },
-    @{ name = "phase-3"; color = "7057ff"; description = "Phase 3: 特殊ルール" },
-    @{ name = "mvp-polish"; color = "fbca04"; description = "MVP 残タスク" }
+    @{ name = "enhancement"; color = "a2eeef"; description = "New feature or TODO Step" },
+    @{ name = "bug"; color = "d73a4a"; description = "Bug report" },
+    @{ name = "docs"; color = "0075ca"; description = "Documentation" },
+    @{ name = "phase-3"; color = "7057ff"; description = "Phase 3 special rules" },
+    @{ name = "mvp-polish"; color = "fbca04"; description = "MVP remaining tasks" }
 )
 foreach ($l in $labels) {
     gh label create $l.name --color $l.color --description $l.description --repo $Repo 2>$null
-    if ($LASTEXITCODE -ne 0) { Write-Host "  label $($l.name): already exists or updated" }
+    if ($LASTEXITCODE -ne 0) {
+        gh label edit $l.name --color $l.color --description $l.description --repo $Repo 2>$null
+    }
 }
 
 Write-Host "==> Milestones"
 $milestones = @(
     @{ title = "Phase 3: Special Rules"; description = "docs/TODO.md Phase 3" },
-    @{ title = "MVP polish"; description = "docs/TODO.md MVP 残タスク" }
+    @{ title = "MVP polish"; description = "docs/TODO.md MVP remaining tasks" }
 )
 foreach ($m in $milestones) {
     gh api repos/$Repo/milestones -f title=$m.title -f description=$m.description 2>$null
@@ -37,7 +39,6 @@ foreach ($m in $milestones) {
 }
 
 Write-Host "==> Branch protection (main)"
-# CI ジョブ名は .github/workflows/ci.yml の jobs.*.name と一致させる
 $protection = @{
     required_status_checks = @{
         strict   = $true
@@ -56,8 +57,7 @@ $protection | gh api repos/$Repo/branches/main/protection -X PUT --input -
 if ($LASTEXITCODE -eq 0) {
     Write-Host "Branch protection applied."
 } else {
-    Write-Host "Branch protection failed. CI が一度成功するまで required checks が選べない場合があります。"
-    Write-Host "Settings > Branches > main で手動設定してください（CONTRIBUTING.md §2 参照）。"
+    Write-Host "Branch protection failed. Re-run after CI passes, or set manually in Settings > Branches > main."
 }
 
 Write-Host "Done. Repository: https://github.com/$Repo"
