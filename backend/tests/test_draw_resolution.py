@@ -112,6 +112,24 @@ def test_minority_switches_to_normal_finish_at_threshold() -> None:
         switched_to_normal_finish=False,
     )
     assert result.switched_to_normal_finish is True
+    assert result.minority_defer_normal_next_match is False
+    assert result.match_ended is False
+
+
+def test_minority_next_match_defers_normal_to_after_match() -> None:
+    outcome = RoundOutcome(is_draw=False, winner_ids=(A, B), eliminated_ids=(C,))
+    result = resolve_after_minority_round(
+        outcome,
+        [A, B, C],
+        draw_count=0,
+        config=MatchConfig(
+            minority_finish_threshold=2,
+            minority_finish_timing=MinorityFinishTiming.NEXT_MATCH,
+        ),
+        switched_to_normal_finish=False,
+    )
+    assert result.switched_to_normal_finish is False
+    assert result.minority_defer_normal_next_match is True
     assert result.match_ended is False
 
 

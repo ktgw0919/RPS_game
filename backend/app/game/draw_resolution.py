@@ -32,6 +32,7 @@ class RoundProgression:
     match_winner_ids: tuple[str, ...]
     score_deltas: tuple[tuple[str, int], ...] = ()
     switched_to_normal_finish: bool = False
+    minority_defer_normal_next_match: bool = False
 
 
 def apply_draw_replay(
@@ -121,6 +122,7 @@ def resolve_after_minority_round(
         current_rule=RuleType.MINORITY,
     )
     now_normal = switched_to_normal_finish or transition.switch_now
+    defer_next = transition.defer_to_next_match
     judging = effective_judging_rule(RuleType.MINORITY, switched_to_normal_finish=now_normal)
 
     if judging is RuleType.NORMAL:
@@ -133,6 +135,7 @@ def resolve_after_minority_round(
                 match_end_reason=MatchEndReason.DECIDED,
                 match_winner_ids=new_alive,
                 switched_to_normal_finish=now_normal,
+                minority_defer_normal_next_match=defer_next,
             )
         if config.normal_end_mode is NormalEndMode.SINGLE_ROUND:
             return RoundProgression(
@@ -143,6 +146,7 @@ def resolve_after_minority_round(
                 match_end_reason=MatchEndReason.DECIDED,
                 match_winner_ids=new_alive,
                 switched_to_normal_finish=now_normal,
+                minority_defer_normal_next_match=defer_next,
             )
 
     if len(new_alive) <= 1:
@@ -154,6 +158,7 @@ def resolve_after_minority_round(
             match_end_reason=MatchEndReason.DECIDED,
             match_winner_ids=new_alive,
             switched_to_normal_finish=now_normal,
+            minority_defer_normal_next_match=defer_next,
         )
     return RoundProgression(
         alive_player_ids=new_alive,
@@ -163,6 +168,7 @@ def resolve_after_minority_round(
         match_end_reason=None,
         match_winner_ids=(),
         switched_to_normal_finish=now_normal,
+        minority_defer_normal_next_match=defer_next,
     )
 
 
