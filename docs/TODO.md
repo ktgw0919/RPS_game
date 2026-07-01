@@ -37,9 +37,7 @@
 
 ## 特殊ルール：ランタイム統合（Phase 3 続き）
 
-> **現状ギャップ**: `game/rules/*` と `game/draw_resolution.py` の純粋ロジックは完了。`RoundRunner` は `judge_normal_round` / `resolve_after_normal_round` のみ。`ws.py` の `START_GAME` は `min_players_for()` のみ（`can_start()` 未使用）。`SUBMIT_HAND` の `segment_id` は runner に未中継。`models.Match` に `bracket` 等の設計フィールドは未追加（`ARCHITECTURE.md` §5 と実装の差分あり）。
->
-> **推奨実装順**: R0（モデル・ストア）→ R1（`ws.py`）→ R2（MINORITY）→ R3（BOSS）→ R4（TOURNAMENT）→ R5（WS 結合テスト）→ R6（フロント UI）。詳細は `ARCHITECTURE.md` §5.1 / §7.1。
+> **完了（R0–R6）**: `RoundRunner` / `ws.py` / フロント UI まで特殊ルールを配線済み。設計の責務分担は `ARCHITECTURE.md` §5.1 / §7.1 を参照。
 
 ### 前提 — `Match` / `state_store`（Step R0）
 
@@ -82,7 +80,7 @@
 
 ## MVP 残タスク（Phase 1–4 外の仕上げ）
 
-設計上は MVP 要件だが、上記フェーズの Step には含まれていない、または UI のみ未着手の項目。
+設計上は MVP 要件だが、上記フェーズの Step には含まれていない項目。**必須はすべて完了**し、下記の任意 E2E のみ残る。
 
 - [x] **`match_history` 永続化**（`ARCHITECTURE.md` §6）: マッチ終了時に MongoDB へ確定結果を保存（`core/match_history.py`）
 - [x] **QR コード共有**（`SCREENS.md` §4.1）: 参加リンク（`/join/:code`）の QR をモーダル表示（`ShareQrModal` / `react-qr-code`）。コード・リンクのコピーは `SharePanel` に実装済み

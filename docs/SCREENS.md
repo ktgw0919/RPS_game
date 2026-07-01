@@ -124,10 +124,9 @@ flowchart TD
 
 再接続時は `STATE_SYNC` の `MatchView`（TOURNAMENT では所属ペアの `deadline_at`）を権威とする（`ARCHITECTURE.md` §7.1）。
 
-### 4.1.1 QR コード共有（未実装）
+### 4.1.1 QR コード共有
 
-- **現状**: `SharePanel` でルームコード・参加リンク（`/join/:code`）のコピーのみ。
-- **予定**: `[QR]` ボタン → `ShareQrModal`（`react-qr-code`）で QR 表示。**実装済み**。
+- `SharePanel` の **QR** ボタン → `ShareQrModal`（`react-qr-code`）で参加リンク（`/join/:code`）を QR 表示。コード・リンクのコピーも同パネルで提供。
 
 ### 4.3 ライブ同期の挙動
 
