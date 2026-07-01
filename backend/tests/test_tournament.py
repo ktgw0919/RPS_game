@@ -165,9 +165,7 @@ def test_full_tournament_five_players_with_bye() -> None:
         collect_round_winners(
             r2,
             {
-                "r2-p0": RoundOutcome(
-                    is_draw=False, winner_ids=("a",), eliminated_ids=("e",)
-                ),
+                "r2-p0": RoundOutcome(is_draw=False, winner_ids=("a",), eliminated_ids=("e",)),
             },
         )
     )
