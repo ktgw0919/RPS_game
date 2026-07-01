@@ -1,0 +1,24 @@
+# Copy to deploy/start-demo.ps1, set $RepoRoot, and run from PowerShell.
+# Do not commit start-demo.ps1 (local paths). See docs/DEPLOY.md.
+#
+# Starts MongoDB, uvicorn, Caddy, and cloudflared in separate windows.
+# Requires: docker, uv, caddy, cloudflared, and prior tunnel setup.
+
+$RepoRoot = '<REPO_ROOT>'
+
+$env:Path = [System.Environment]::GetEnvironmentVariable('Path', 'Machine') + ';' +
+            [System.Environment]::GetEnvironmentVariable('Path', 'User')
+
+Set-Location $RepoRoot
+docker compose up -d
+
+Start-Process powershell -ArgumentList '-NoExit', '-Command',
+  "Set-Location '$RepoRoot\backend'; uv run uvicorn app.main:app --host 127.0.0.1 --port 8000"
+
+Start-Process powershell -ArgumentList '-NoExit', '-Command',
+  "Set-Location '$RepoRoot'; caddy run --config Caddyfile"
+
+Start-Process powershell -ArgumentList '-NoExit', '-Command',
+  'cloudflared tunnel run rps-demo'
+
+Write-Host 'Started demo stack. Verify: Invoke-RestMethod https://rps.<DOMAIN>/health'

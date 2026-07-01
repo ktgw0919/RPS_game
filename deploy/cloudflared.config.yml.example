@@ -1,0 +1,18 @@
+# Copy to %USERPROFILE%\.cloudflared\config.yml and replace placeholders.
+# Do not commit the real config.yml or *.json credentials (see docs/DEPLOY.md).
+#
+#   <TUNNEL_ID>  — UUID from `cloudflared tunnel create rps-demo`
+#   <DOMAIN>     — your zone on Cloudflare (e.g. example.com)
+#
+# After editing:
+#   cloudflared tunnel ingress validate
+#   cloudflared tunnel route dns rps-demo rps.<DOMAIN>
+#   cloudflared tunnel run rps-demo
+
+tunnel: rps-demo
+credentials-file: C:\Users\<USERNAME>\.cloudflared\<TUNNEL_ID>.json
+
+ingress:
+  - hostname: rps.<DOMAIN>
+    service: http://localhost:8080
+  - service: http_status:404

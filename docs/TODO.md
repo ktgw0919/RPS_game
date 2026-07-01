@@ -107,8 +107,8 @@
 
 > 公開デモ・本番ホスティング向け。プロトコル変更は行わず運用ドキュメントと設定の整備が中心。
 
-- [ ] **Step 1 — デプロイ手順**: HTTPS / `wss`、リバースプロキシ（WebSocket アップグレード）、単一 uvicorn ワーカー前提を README または `docs/DEPLOY.md` に記載（`ARCHITECTURE.md` §11 トランスポート暗号化と整合）
-- [ ] **Step 2 — 本番設定チェックリスト**: `ALLOW_CPU=false`、`CORS_ORIGINS`、MongoDB Atlas、`ROOM_*` TTL の推奨値。`.env.example` への本番向けコメント追記
+- [x] **Step 1 — デプロイ手順**: HTTPS / `wss`、リバースプロキシ（WebSocket アップグレード）、単一 uvicorn ワーカー前提を `docs/DEPLOY.md` に記載。テンプレートは `deploy/*.example`（`ARCHITECTURE.md` §11 トランスポート暗号化と整合）
+- [x] **Step 2 — 本番設定チェックリスト**: `ALLOW_CPU=false`、`CORS_ORIGINS`、MongoDB Atlas、`ROOM_*` TTL の推奨値。`docs/DEPLOY.md` チェックリスト + `backend/.env.example` コメント追記
 
 ## Phase 8: 水平スケール（任意）
 
