@@ -7,7 +7,7 @@ from typing import Any
 
 from app.core.state_store import InMemoryGameStateStore
 from app.game.start_conditions import can_start, eligible_player_ids, min_players_for
-from app.models import ConnectionState, CpuStrategy, Player, RuleType
+from app.models import ConnectionState, CpuStrategy, MatchConfig, Player, RuleType
 
 NOW = datetime(2026, 1, 1, tzinfo=UTC)
 
@@ -45,3 +45,14 @@ def test_min_players_and_can_start_gate() -> None:
     assert can_start(room) is False
     store.add_player(room, _player("p2"))
     assert can_start(room) is True
+
+
+def test_boss_start_requires_nominated_boss_in_s() -> None:
+    store, room = _store_with_host()
+    store.add_player(room, _player("p2"))
+    room.config = MatchConfig(rule_type=RuleType.BOSS, boss_player_id="missing")
+    assert can_start(room) is False
+    room.config = MatchConfig(rule_type=RuleType.BOSS, boss_player_id="h")
+    assert can_start(room) is True
+    room.config = MatchConfig(rule_type=RuleType.BOSS, boss_player_id=None)
+    assert can_start(room) is False
