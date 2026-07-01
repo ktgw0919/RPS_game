@@ -323,6 +323,7 @@ class MatchView(BaseModel):
     my_submitted: bool = False
     boss_player_id: str | None = None
     segment_id: str | None = None
+    switched_to_normal_finish: bool = False
 
     @field_serializer("deadline_at")
     def _ser_deadline_at(self, value: datetime | None) -> str | None:

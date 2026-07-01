@@ -132,6 +132,9 @@ def _match_view(room: Room, viewer_id: str) -> MatchView | None:
         my_submitted=my_submitted,
         boss_player_id=match.boss_player_id,
         segment_id=segment_id,
+        switched_to_normal_finish=(
+            match.switched_to_normal_finish if match.rule_type is RuleType.MINORITY else False
+        ),
     )
 
 

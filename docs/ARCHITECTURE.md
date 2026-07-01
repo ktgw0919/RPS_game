@@ -227,7 +227,7 @@
 |---|---|---|
 | `ws.py` `START_GAME` | `can_start()` + `init_match_for_rule`（R0/R1 実装済み） | ルール別 match 初期化 |
 | `ws.py` `SUBMIT_HAND` | `segment_id` 無視 | runner へ `segment_id` 中継（TOURNAMENT 必須） |
-| `RoundRunner` | `judge_normal_round` のみ | `rule_type`（＋ MINORITY の移行フラグ）で `judge_*` / `resolve_after_*` をディスパッチ（**MINORITY・BOSS・TOURNAMENT 実装済み** R2–R4） |
+| `RoundRunner` | `judge_normal_round` のみ | `rule_type`（＋ MINORITY の移行フラグ）で `judge_*` / `resolve_after_*` をディスパッチ（**R0–R6 完了**） |
 | タイマー | `(room, null)` 1本 | TOURNAMENT はアクティブペアごとに `(room, segment_id)` 並行 |
 
 **実装順（推奨）**: MINORITY（単一区画・NORMAL と同型）→ BOSS（scores・ボス手）→ TOURNAMENT（区画別ラウンド・ステージバリア）。
@@ -282,7 +282,7 @@
   - 同一ステージの全ペアは**同じ `round_no`** を共有。ペア内あいこ再戦時のみ `round_no` を +1（`(round_no, segment_id)` で区画一意）
   - `ROUND_START.alive_player_ids` は TOURNAMENT では**当該ペアの2人**（観戦者・他ペアの alive は含めない）。`SUBMISSION_UPDATE.expected_count` はペア内では `2`
   - ステージ完了後: `collect_round_winners` → 優勝者1人なら `MATCH_END`、そうでなければ `next_bracket_round` で次段ペアを開始（bye は `ROUND_START` 不要で即勝者扱い）
-- **`MatchView`（TOURNAMENT）**: 再接続クライアント向けに、viewer の所属ペアの `segment_id` とその区画の `deadline_at` / `my_submitted` を返す（`_match_view` 拡張。`TODO.md` R4）
+- **`MatchView`（TOURNAMENT）**: 再接続クライアント向けに、viewer の所属ペアの `segment_id` とその区画の `deadline_at` / `my_submitted` を返す（`_match_view`、R4–R6）
 
 ## 8. 特殊ルール仕様（あいこ・再戦）
 判定は `game/engine.py`（通常）と `game/rules/*`（特殊）に分離する。**あいこ（決着がつかず同メンバーで再戦するラウンド）の回数**の上限は `MatchConfig.max_draw_rounds`（§9）で制御し、上限到達時はその Match を**引き分け終了**（脱落・勝者確定なし）とする。脱落が進むラウンド（メンバーが変わる再戦）はこのカウントに**含めない**。

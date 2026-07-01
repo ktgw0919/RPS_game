@@ -80,7 +80,7 @@ export function LobbyScreen() {
       <Divider />
 
       <Panel title="ゲーム設定">
-        <SettingsPanel config={config} editable={isHost} />
+        <SettingsPanel config={config} editable={isHost} members={members} />
       </Panel>
 
       <Divider />

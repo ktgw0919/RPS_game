@@ -1,4 +1,11 @@
-import type { Hand, MatchEndReason, NormalEndMode, RoundAdvanceMode, RuleType } from '@/types';
+import type {
+  Hand,
+  MatchEndReason,
+  MinorityFinishTiming,
+  NormalEndMode,
+  RoundAdvanceMode,
+  RuleType,
+} from '@/types';
 
 export const HAND_LABELS: Record<Hand, { emoji: string; label: string }> = {
   ROCK: { emoji: '✊', label: 'グー' },
@@ -26,4 +33,9 @@ export const ADVANCE_MODE_LABELS: Record<RoundAdvanceMode, string> = {
 export const MATCH_END_REASON_LABELS: Record<MatchEndReason, string> = {
   DECIDED: '決着',
   DRAW_MAX_ROUNDS: 'あいこ上限',
+};
+
+export const MINORITY_TIMING_LABELS: Record<MinorityFinishTiming, string> = {
+  IMMEDIATE: '即時',
+  NEXT_MATCH: '次マッチから',
 };
