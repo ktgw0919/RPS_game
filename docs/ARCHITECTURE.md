@@ -205,6 +205,12 @@
 - **Room**: ロビー単位。`room_code`(一意), `host_player_id`, `status`(WAITING / IN_GAME / CLOSED), `members[]`, `config`(次の Match に使う `MatchConfig`), `created_at`, `last_active_at`
 - **Player**: `player_id`, `token`(検証用。CPU は `null`), `display_name`(CPU は `CPU-1` 等の自動採番), `connection_state`(CONNECTED / DISCONNECTED。CPU は常に CONNECTED), `joined_at`, `is_cpu`(bool), `cpu_strategy`(`CpuStrategy` / 人間は `null`)
 - **Match**: 1ゲーム。`match_id`, `rule_type`(NORMAL / MINORITY / BOSS / TOURNAMENT), `state`(§6), `config`(`MatchConfig`), `alive_player_ids[]`, `scores{player_id:int}`, `current_round_no`, `boss_player_id`(BOSS用), `bracket`(TOURNAMENT用), `winner_ids[]`, `started_at`, `ended_at`
+  - **ランタイム統合時の追加フィールド**（`TODO.md` Step R0。現行 `models.py` には未実装）:
+    - `switched_to_normal_finish: bool` — MINORITY が閾値到達後 NORMAL 判定へ移行済みか
+    - `tournament_bracket_round: int` — 現在のブラケット段（0 始まり）
+    - `tournament_active_pairs` — 当該段のアクティブペア一覧（`game/rules/tournament.TournamentPair` 相当）
+    - `tournament_segment_rounds: Record<segment_id, Round>` — TOURNAMENT の区画別提出・締切（NORMAL / MINORITY / BOSS は `current_round` 1本のまま）
+  - **`boss_player_id`**: フィールドは存在するが、`START_GAME` 時に `config.boss_player_id` をコピーする処理はランタイム統合（R1）で追加する
 - **Round**: Match 内の1回のじゃんけん（あいこ再戦で複数発生）。`round_no`, `deadline_at`(サーバー時刻が権威), `submissions{player_id: Hand}`, `result`, `judged_at`
   - **`round_no` の採番規則**: Match 開始時を `1` とし、以降は**あいこ再戦・脱落再戦を問わず新しいラウンドを開始するたびに +1 する単調増加**の整数（マッチをまたいでリセット）。`max_draw_rounds` のカウントは `round_no` とは別管理で「あいこ（同メンバー再戦）」のみを数える（脱落でメンバーが変わる再戦は数えない。§8）。`SUBMIT_HAND` / ラウンド系メッセージの `round_no` はこの値を用い、サーバーは**現在ラウンドと一致しない `round_no` の `SUBMIT_HAND` を `INVALID_STATE` で破棄**する（再接続時の遅延提出・stale 提出の混入を防ぐ）。TOURNAMENT で並行ペアがある場合の採番は §7.1 を参照（`(round_no, segment_id)` で一意）。
 - **Hand（列挙）**: `ROCK` / `SCISSORS` / `PAPER`
@@ -212,6 +218,19 @@
   - `match_history` ドキュメント例: `{ _id, room_code, match_id, rule_type, players: [{ player_id, display_name, is_cpu }], winner_ids, scores, started_at, ended_at }`
   - インデックス: `room_code` + `ended_at`（降順）でルーム内の履歴を新しい順に取得する。`match_id` にユニークインデックス（二重書き込み防止）。`player_id` は当該ルームの一時 ID であり、ルームをまたいだ同一人物の追跡は MVP では行わない。
   - **読み取り（Phase 5）**: `GET /rooms/{code}/matches`（§3.1）が MongoDB から一覧を返す。**インメモリのルーム状態とは独立**。ラウンド単位のリプレイ・グローバルスコアボード集計は対象外。
+
+### 5.1 特殊ルールのランタイム統合（実装指針）
+
+判定アルゴリズム（`game/rules/*`・`game/draw_resolution.py`）は Phase 3 Step 1–4 で完了。**オンライン配線**は `core/round_runner.py` と `routers/ws.py` が NORMAL のみ。進捗・タスク分解は `TODO.md`「特殊ルール：ランタイム統合」（Step R0–R6）を正とする。
+
+| 層 | NORMAL（現状） | 統合後の責務 |
+|---|---|---|
+| `ws.py` `START_GAME` | `min_players_for` | `can_start()` + ルール別 match 初期化 |
+| `ws.py` `SUBMIT_HAND` | `segment_id` 無視 | runner へ `segment_id` 中継（TOURNAMENT 必須） |
+| `RoundRunner` | `judge_normal_round` のみ | `rule_type`（＋ MINORITY の移行フラグ）で `judge_*` / `resolve_after_*` をディスパッチ |
+| タイマー | `(room, null)` 1本 | TOURNAMENT はアクティブペアごとに `(room, segment_id)` 並行 |
+
+**実装順（推奨）**: MINORITY（単一区画・NORMAL と同型）→ BOSS（scores・ボス手）→ TOURNAMENT（区画別ラウンド・ステージバリア）。
 
 ## 6. ゲーム状態遷移 (FSM)
 - **Room.status**: `WAITING ⇄ IN_GAME`、最終的に `CLOSED`
@@ -257,6 +276,13 @@
 - **クリーンアップ**: 判定確定・`NEXT_ROUND`・Match 終了・ルーム破棄の各タイミングで、未完了のタイマータスクを確実に `cancel()` して破棄する。
 - **区画（segment）単位への抽象化**: NORMAL / MINORITY / BOSS は1ルームに同時1ラウンド（`segment_id=null`）だが、**TOURNAMENT は `segment_id` ごとに並行ラウンドが走り、ペアごとに独立した締切・あいこ再戦・`round_no` が必要**になる。そのため MVP の段階から**タイマータスクと「未判定か」の確認単位を「ルーム」ではなく「`(room, segment_id)`」をキーとする抽象**として設計する（NORMAL では `segment_id=null` の単一区画として1本動く）。
   - **ロックとの関係**: ルーム状態の書き込み直列化は §4 / 本節の**ルーム単位ロックを維持**する（区画ごとの判定もロック取得後に対象区画の未判定チェックを行う）。これにより Phase 3 で TOURNAMENT を追加する際、`v:1` のメッセージ形式・タイマー実装を破壊的に変えずに並行ペアへ拡張できる。
+- **TOURNAMENT の `Match.state`（ステージ集約）**: ペアごとに `COLLECTING` / `ROUND_RESULT` が異なる時刻に存在しうるが、§6 の単一 FSM と矛盾しないよう **マッチ全体の `Match.state` はステージ単位で集約**する。区画ごとの提出・締切・判定済みは `tournament_segment_rounds`（§5）で保持する。
+  - ステージ中: いずれかの区画が未完了ならマッチは `COLLECTING`（または区画判定中の短い `JUDGING` をマッチ全体に反映してよい。実装は `RoundRunner` で一貫させる）
+  - 全アクティブ区画が完了（bye 含む勝者確定）したら `ROUND_RESULT` → 自動/手動で次ステージまたは `MATCH_END`
+  - 同一ステージの全ペアは**同じ `round_no`** を共有。ペア内あいこ再戦時のみ `round_no` を +1（`(round_no, segment_id)` で区画一意）
+  - `ROUND_START.alive_player_ids` は TOURNAMENT では**当該ペアの2人**（観戦者・他ペアの alive は含めない）。`SUBMISSION_UPDATE.expected_count` はペア内では `2`
+  - ステージ完了後: `collect_round_winners` → 優勝者1人なら `MATCH_END`、そうでなければ `next_bracket_round` で次段ペアを開始（bye は `ROUND_START` 不要で即勝者扱い）
+- **`MatchView`（TOURNAMENT）**: 再接続クライアント向けに、viewer の所属ペアの `segment_id` とその区画の `deadline_at` / `my_submitted` を返す（`_match_view` 拡張。`TODO.md` R4）
 
 ## 8. 特殊ルール仕様（あいこ・再戦）
 判定は `game/engine.py`（通常）と `game/rules/*`（特殊）に分離する。**あいこ（決着がつかず同メンバーで再戦するラウンド）の回数**の上限は `MatchConfig.max_draw_rounds`（§9）で制御し、上限到達時はその Match を**引き分け終了**（脱落・勝者確定なし）とする。脱落が進むラウンド（メンバーが変わる再戦）はこのカウントに**含めない**。
@@ -276,7 +302,7 @@
 
 | 項目 | 型 / 選択肢 | 範囲 | 既定 | 有効条件 |
 |---|---|---|---|---|
-| `rule_type` | NORMAL / MINORITY / BOSS / TOURNAMENT | — | NORMAL | 常時（MVP は NORMAL のみ有効） |
+| `rule_type` | NORMAL / MINORITY / BOSS / TOURNAMENT | — | NORMAL | 常時。**オンライン対戦は NORMAL のみ**（特殊ルールはアルゴリズム実装済み・`RoundRunner` 統合後に有効化。`TODO.md` R0–R6） |
 | `normal_end_mode` | ELIMINATION / SINGLE_ROUND | — | ELIMINATION | `rule_type=NORMAL`（§8） |
 | `round_time_limit_sec` | int（秒） | 5〜60（5刻み） | 10 | 常時 |
 | `round_advance_mode` | AUTO / MANUAL | — | AUTO | 常時（`ROUND_RESULT` からの進行） |
@@ -286,7 +312,7 @@
 | `minority_finish_timing` | 即時 / 次マッチから | — | 即時 | `rule_type=MINORITY` |
 | `boss_player_id` | player_id | 参加者一覧 | 未選択(null) | `rule_type=BOSS`（ホスト指名） |
 
-> MVP では `rule_type = NORMAL` のみ実装し、`Match` / `alive_player_ids` / `scores` / `MatchConfig` の器は最初から用意する。特殊ルール固有の設定項目は Phase 3 で有効化する。
+> **器とアルゴリズム**: `Match` / `MatchConfig` / `scores` / ルール別設定項目は用意済み。判定は `game/rules/*` + `draw_resolution.py` まで完了。**ランタイム統合**（`RoundRunner` / `ws.py` / フロント UI）は `TODO.md`「特殊ルール：ランタイム統合」を参照。
 
 ## 10. バックグラウンドタスク・ライフサイクル
 ゲーム進行とは別に、`lifespan` で起動する常駐タスクで以下を扱う（単一ワーカー前提。複数ワーカー化時は Redis 実装側へ移す）。
