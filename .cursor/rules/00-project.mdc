@@ -1,0 +1,35 @@
+---
+description: リアルタイムじゃんけんゲームの中核方針と必須制約
+alwaysApply: true
+---
+
+# プロジェクト共通ルール
+
+React + FastAPI + WebSocket + MongoDB のリアルタイムじゃんけんゲーム。
+
+## 設計の正本（必ず参照）
+
+実装より先に `docs/` を正とする。矛盾を見つけたら勝手に実装せず確認する。
+
+- `docs/REQUIREMENTS.md`: 製品要件・制約
+- `docs/ARCHITECTURE.md`: 技術設計（WS メッセージ・FSM・ドメインモデル。§番号で参照）
+- `docs/SCREENS.md`: 画面遷移
+- `docs/TODO.md`: 実装フェーズ（Phase 1–4 を正とする）
+- `docs/TEMPLATE_NOTES.md`: 構成雛形（責務分割の考え方）
+
+Step 完了時の進捗ドキュメント同期は `.cursor/rules/docs-sync.mdc` に従う（`TODO.md` を先に更新し、Phase/能力/UI/設計に応じて派生ドキュメントを更新）。
+
+## 全体で守る制約
+
+- ディレクトリ構成・責務分割は `ARCHITECTURE.md` §2 に従う（`routers/` / `core/` / `game/` / `components/` / `hooks/` / `types/`）。
+- WS メッセージは封筒形式 `{ "type": T, "payload": P, "v": 1 }` に統一する。
+- 時刻フィールドは **UTC・ISO8601・ミリ秒付き・末尾 `Z`**（例 `2026-06-29T08:00:00.000Z`）。クライアントは端末時計に依存せず `server_now` と `deadline_at` の差分で残り時間を算出する。
+- `ErrorCode` は front/back 共有の定数とし、`ARCHITECTURE.md` §4.1 の一覧を正とする。
+- WS / ドメインの型は frontend(`types`) と backend(Pydantic v2) で同一構造を二重定義し整合を取る。WS payload や `ErrorCode` を増減する変更は、front `types` と Pydantic モデルを**同一の変更（同じコミット/PR）で更新**する。
+- 認証は行わず `playerId` / `playerToken` で識別する。トークンは応答 body のみで返し、URL・クエリ・ログに残さない（`?token=` 方式は禁止）。
+- ゲーム進行状態の正本は MVP では単一プロセスのインメモリ。状態アクセスは `GameStateStore` インターフェース越しに抽象化する（Redis はスケール時の任意要素）。
+- MVP は `rule_type = NORMAL` のみ実装。特殊ルール（MINORITY/BOSS/TOURNAMENT）は Phase 3。ただし器（`Match`/`scores`/`MatchConfig` 等）は最初から用意する。
+
+## 開発環境
+
+- 開発環境は **Windows / PowerShell**。シェルコマンドを生成・実行する際は PowerShell 構文を前提とする（`&&` 連結や POSIX 専用コマンドの取り違えに注意）。

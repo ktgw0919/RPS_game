@@ -1,0 +1,51 @@
+---
+description: FastAPI バックエンドの規約（uv / Pydantic v2 / lifespan / PyMongo Async）
+globs: backend/**
+alwaysApply: false
+---
+
+# Backend 規約
+
+詳細は `docs/ARCHITECTURE.md` §1〜§11 を正とする。以下は必須の禁止/採用事項。
+
+## 依存・ライフサイクル
+
+- 依存管理は **`uv` + `pyproject.toml`**。`pip` / `requirements.txt` は使わない。
+- `redis` は MVP 必須から外し optional-dependencies(extras `[redis]`) に切り出す。
+- アプリのライフサイクルは **`lifespan`**。`@app.on_event("startup"/"shutdown")` は使わない。
+
+```python
+# ✅ GOOD
+from contextlib import asynccontextmanager
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    app.mongodb_client = AsyncMongoClient(settings.DB_URL)
+    yield
+    await app.mongodb_client.close()
+```
+
+## スキーマ・DB
+
+- スキーマは **Pydantic v2**（`model_config` / `field_validator`）。v1 の `class Config` / `validator` は使わない。
+- MongoDB は **PyMongo Async（`AsyncMongoClient`）**。Motor は新規採用しない。接続は `database.py` に分離。
+- 永続化は Match 終了時の確定結果＋最終スコアのみ（`match_history`）。途中経過は保存しない。
+- **front/back 型の整合**: WS payload / `ErrorCode` / `MatchConfig` を増減・変更する際は、frontend の `src/types` と**同一のコミット/PR で更新**する（封筒形式 `{type, payload, v:1}` と構造を一致させる。`ErrorCode` は `ARCHITECTURE.md` §4.1、`MatchConfig` の範囲・既定は §9 を正とする）。
+
+## 責務分割（ディレクトリ）
+
+- ディレクトリ構成は `ARCHITECTURE.md` §2 を正とする。責務は **`routers/`（I/O 境界）/ `core/`（接続・状態・セキュリティ基盤）/ `game/`（副作用の無い純粋なゲームドメイン）** の3層に分け、依存方向は `routers → core → game`（`game` は他層に依存しない）。
+- `utils.py` は時刻整形・ルームコード生成などの**汎用ヘルパ専用**。接続管理・状態ストア・判定エンジン等のドメイン/基盤ロジックを置かない（雛形のような何でも `utils/` は禁止）。
+
+## 設定・並行性
+
+- 設定は `python-decouple` で `.env` から読み込み、単一 `Settings` に集約。起動時に必須値(`DB_URL`/`DB_NAME`)の欠落・型不正を検査して fail-fast。
+- **値の置き場所**: プロトコル/体感の固定値（ハートビート間隔 25s・タイムアウト 60s・WS サイズ上限 8KB・CPU 提出遅延 0.3〜1.5s/ε 0.25s・スイープ実行間隔 60s）は `core/constants.py` に定数として置き `.env` に出さない。運用調整値（`HOST_TRANSFER_GRACE_SEC`=30 / `GHOST_TTL_SEC`=120 / `ROOM_IDLE_TTL_SEC`=1800 / `ROOM_CREATE_RATE_MAX`=10 / `ROOM_CREATE_RATE_WINDOW_SEC`=600 / `CORS_ORIGINS`）は **既定値つきで `Settings`**（任意・`.env` 上書き可・fail-fast 対象外）。ハートビート間隔は frontend と同値を持ち同時更新する（正本は `ARCHITECTURE.md` §1/§4/§6/§10/§11）。
+- ラウンド締切はサーバー側タイマー(`asyncio.Task`)が権威。全員提出時は `task.cancel()` で早期確定。タイマー/未判定チェックの単位は `(room, segment_id)`（NORMAL は `segment_id=null` の単一区画。TOURNAMENT 拡張に備える。§7.1）。CPU の自動提出遅延は締切手前にクランプする。
+- ルーム状態への書き込みは**ルーム単位の単一 `asyncio.Lock` で全て直列化**する。判定（二重判定防止：ロック取得後に「未判定か」を確認し1回だけ実行）に加え、`JOIN`/`LEAVE`/`ADD_CPU`/`REMOVE_CPU`/`UPDATE_SETTINGS`/`START_GAME` 等のロビー操作も同一ロック配下で処理する（定員・FSM・ホスト判定のレース防止）。実 WS 送信はロック外で行う。
+- 常駐タスク（ルーム破棄スイープ・ホスト自動移譲・切断検知）は `lifespan` で起動し、終了時に必ず `cancel()`。
+
+## 品質ツール
+
+- ruff（lint+format）・mypy（型）・pytest。テストは判定エンジン純粋関数／FSM 単体／WebSocket 結合の3層（§11）。
+- **新規ロジックを追加・変更したら対応する層のテストを必ず追加/更新する**（判定ロジック→純粋関数、FSM 遷移→状態ストア単体、WS フロー→結合）。締切タイマー・CPU 遅延・結果表示待機は実時間に依存させず、`now()`/sleep を注入可能にして決定的にテストする。

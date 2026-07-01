@@ -1,0 +1,15 @@
+# Local MongoDB for development (Option A in backend/.env.example).
+# Usage: docker compose up -d
+# Then set DB_URL=mongodb://localhost:27017 and DB_NAME=rps in backend/.env.
+services:
+  mongo:
+    image: mongo:7
+    container_name: rps-mongo
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo-data:/data/db
+
+volumes:
+  mongo-data:

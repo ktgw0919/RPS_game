@@ -1,0 +1,59 @@
+---
+description: 実装完了時に進捗ドキュメントを同期する手順（TODO / README / REQUIREMENTS 等）
+alwaysApply: true
+---
+
+# 進捗ドキュメント同期
+
+設計の正本（`ARCHITECTURE.md` 等）と進捗の正本（`TODO.md` 等）は役割が異なる。
+**Step 完了時は進捗ドキュメントを同一セッション/PR で更新する。** 設計と実装が一致しているだけでは `ARCHITECTURE.md` は触らない。
+
+## いつ更新するか
+
+- `docs/TODO.md` の Step を完了したとき（実装 + 対応テストが通ったあと）
+- ユーザーが「ドキュメントを更新して」と依頼したとき
+- 部分実装・仕上げ項目を発見したとき（「MVP 残タスク」へ追記）
+
+## 完了の定義
+
+- Step の受け入れ条件（`TODO.md` の文言 + 対応テスト）を満たしたら `[x]`
+- 一部のみ完了 → Step は `[ ]` のまま。`docs/TODO.md` 末尾の **「MVP 残タスク」** に具体項目を追記
+- 任意 Step（例: Phase 2 Step 3 Redis）は未着手のまま `[ ]` でよい
+
+## 更新マトリクス
+
+| 変更内容 | 更新するファイル | タイミング |
+|----------|------------------|------------|
+| 任意の TODO Step 完了 | `docs/TODO.md`（該当 Step を `[x]`） | **必ず最初** |
+| Phase 内の必須 Step がすべて `[x]` | `README.md` の実装状況 | Phase 完了時 |
+| MVP 製品能力が満たされた | `docs/REQUIREMENTS.md` の該当 `[x]` | 能力単位（Step ごとではない） |
+| 画面・導線・UI 仕様の変化 | `docs/SCREENS.md` | UI 変更 PR |
+| backend 構成・起動手順の変化 | `backend/README.md` | backend 骨格変更時 |
+| WS / FSM / ドメインの**設計**変更 | `docs/ARCHITECTURE.md`（§番号で追記） | プロトコル・型・FSM を変えたときのみ |
+
+## 更新しないもの
+
+- 設計と実装が一致しているだけでは `ARCHITECTURE.md` は更新しない
+- `REQUIREMENTS.md` / `README.md` を Step 完了のたびに毎回書き換えない（Phase / 能力単位）
+- `docs/TEMPLATE_NOTES.md` は雛形メモのため、通常の Step 完了では触らない
+
+## 部分実装の書き方
+
+- **`docs/REQUIREMENTS.md`**: ユーザーが体感できる能力が揃えば `[x]`。未着手の表面（UI のみ等）は同一行または直後に注記（例: ※ WS のみ実装済み）
+- **`docs/SCREENS.md`**: ワイヤーフレーム横に `← 未実装` 等の注記。実装済みなら注記を削除
+- **`docs/TODO.md`**: 末尾「MVP 残タスク」に、Step に含まれない仕上げ項目を列挙
+
+## 更新順序
+
+1. `docs/TODO.md`（Step の `[x]` または「MVP 残タスク」）
+2. 条件を満たせば `README.md`（Phase サマリー）
+3. 条件を満たせば `docs/REQUIREMENTS.md`（製品能力）
+4. UI 変更があれば `docs/SCREENS.md`
+5. 設計変更があれば `docs/ARCHITECTURE.md`
+6. backend 骨格変更があれば `backend/README.md`
+
+## PR / コミット
+
+- 実装 PR には進捗ドキュメント更新を含める（例: `docs(todo): mark Phase 2 Step 9 done`）
+- PR 説明に「関連 TODO Step」を書く（`docs/CONTRIBUTING.md` §5 / §9）
+- ドキュメントのみの変更は `docs(...)` scope を使う

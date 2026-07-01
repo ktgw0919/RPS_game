@@ -1,0 +1,34 @@
+---
+description: React フロントエンドの規約（Vite + TypeScript strict / Context+useReducer）
+globs: frontend/**
+alwaysApply: false
+---
+
+# Frontend 規約
+
+詳細は `docs/ARCHITECTURE.md` §1, `docs/SCREENS.md` を正とする。以下は必須事項。
+
+## 基盤
+
+- **Vite + TypeScript（strict モード）** で SPA を構築する。Create React App は使わない。
+- UI は Tailwind CSS。モバイルファースト（大きなタップ領域・高い視認性）。
+- 関数コンポーネントを使い、再利用ロジックはカスタムフックに切り出す。
+
+## 状態管理・通信
+
+- ゲーム状態は **React Context + `useReducer`** で管理する（追加の状態管理ライブラリは入れない）。
+- `STATE_SYNC` をスナップショット、その他 WS メッセージを差分アクションとして reducer で適用する。**`STATE_SYNC` 受信時はこれを権威としてローカル状態を完全リセット**し（再接続前の差分は破棄）、`members` / `server_now` を含めて復元する。
+- 参加者一覧（`members`）は `STATE_SYNC` / `LOBBY_UPDATE` のフルスナップショットのみを権威として**全置換**する。`PLAYER_JOINED` / `PLAYER_LEFT` / `HOST_CHANGED` は**通知専用**として扱い、名簿の真実を更新しない（`ARCHITECTURE.md` §4「名簿の権威」）。
+- リアルタイム同期は `src/hooks/useWebSocket.ts` に集約する。
+- ハートビート間隔（25s）はサーバーと一致が必須の共有定数として `src/types`（または定数モジュール）に持ち、`ARCHITECTURE.md` §4・backend の `core/constants.py` と**同時更新**する（端末側で勝手な値にしない）。
+- **SWR は MVP では導入しない**。REST は軽量な fetch ラッパーのみ（履歴・スコアボード実装時に SWR 導入）。
+
+## 型・整合
+
+- WS メッセージ型・ドメイン型（`PlayerView` / `RoomView` / `MatchView` / `Hand` / `ErrorCode` 等）は `src/types` に定義し、backend の Pydantic v2 モデル・封筒形式 `{type, payload, v:1}` と構造を一致させる。payload や `ErrorCode` を増減する変更は backend の Pydantic と**同一の変更で更新**する。
+- 時刻は UTC ISO8601（ミリ秒・`Z`）。残り時間は `server_now` と `deadline_at` の差分から算出し、端末時計に依存しない。
+- `display_name` 等の入力チェックは UX 補助であり、検証の正はサーバー側。`MatchConfig` の既定値・範囲（スライダー上限等）も**正本は `ARCHITECTURE.md` §9**で、UI 側で数値をハードコードして §9 と乖離させない。
+
+## 品質ツール
+
+- ESLint + Prettier、TypeScript strict。
