@@ -146,7 +146,9 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
 
     case 'ROUND_START': {
       const payload = action.payload;
+      // First ROUND_START after START_GAME bootstraps match from config; skip pair filter until then.
       if (
+        state.match &&
         !isViewerRoundMessage(state.match, state.you, payload.segment_id, payload.alive_player_ids)
       ) {
         return state;
