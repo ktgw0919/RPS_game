@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { AliveRoster } from '@/components/game/AliveRoster';
 import { DeadlineTimer } from '@/components/game/DeadlineTimer';
 import { HandPicker } from '@/components/game/HandPicker';
+import { RuleStatusBanner } from '@/components/game/RuleStatusBanner';
 import { SpectatorBanner } from '@/components/game/SpectatorBanner';
 import { Panel } from '@/components/ui/Panel';
 import { useDeadline } from '@/hooks/useDeadline';
@@ -23,33 +24,56 @@ export function CollectingView() {
 
   useEffect(() => {
     setPicked(null);
-  }, [timing?.round_no]);
+  }, [timing?.round_no, timing?.segment_id]);
 
   const msLeft = useDeadline(timing?.server_now ?? serverNow, timing?.deadline_at ?? null);
   const deadlinePassed = msLeft !== null && msLeft <= 0;
 
-  if (!match || !you || !timing) return null;
+  if (!match || !you) return null;
+
+  const isTournament = match.rule_type === 'TOURNAMENT';
+  const waitingOtherPair = isTournament && !timing && match.state === 'COLLECTING';
+
+  if (!timing && !waitingOtherPair) return null;
 
   const isOnline = connectionStatus === 'connected';
   const isSpectator = you.is_spectator;
-  const isAlive = match.alive_player_ids.includes(you.player_id);
-  const canSubmit = isOnline && isAlive && !isSpectator && !match.my_submitted && !deadlinePassed;
+  const pairAliveIds = timing?.alive_player_ids ?? [];
+  const isInPair = pairAliveIds.includes(you.player_id);
+  const isAlive =
+    match.rule_type === 'TOURNAMENT' ? isInPair : match.alive_player_ids.includes(you.player_id);
+  const canSubmit =
+    isOnline && isAlive && !isSpectator && !match.my_submitted && !deadlinePassed && timing != null;
 
   const submitted = submissionProgress?.submitted_player_ids.length ?? null;
-  const expected = submissionProgress?.expected_count ?? match.alive_player_ids.length;
+  const expected =
+    submissionProgress?.expected_count ??
+    (isTournament ? pairAliveIds.length : match.alive_player_ids.length);
   const allSubmitted =
     submitted !== null ? submitted >= expected && expected > 0 : match.my_submitted;
   const judging = match.my_submitted && (allSubmitted || deadlinePassed);
 
   const handlePick = (hand: Hand) => {
-    if (!canSubmit) return;
+    if (!canSubmit || !timing) return;
     setPicked(hand);
-    send('SUBMIT_HAND', { round_no: timing.round_no, hand });
+    const payload: { round_no: number; hand: Hand; segment_id?: string } = {
+      round_no: timing.round_no,
+      hand,
+    };
+    if (isTournament && timing.segment_id) {
+      payload.segment_id = timing.segment_id;
+    }
+    send('SUBMIT_HAND', payload);
   };
+
+  const panelTitle = timing
+    ? `ラウンド ${timing.round_no}${timing.segment_id ? ` · ${timing.segment_id}` : ''}`
+    : 'トーナメント';
 
   return (
     <div className="flex flex-col gap-4">
       {isSpectator ? <SpectatorBanner /> : null}
+      <RuleStatusBanner match={match} members={members} />
 
       {!isOnline ? (
         <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-200">
@@ -57,25 +81,40 @@ export function CollectingView() {
         </div>
       ) : null}
 
-      <AliveRoster members={members} alivePlayerIds={match.alive_player_ids} />
+      <AliveRoster
+        members={members}
+        alivePlayerIds={isTournament ? pairAliveIds : match.alive_player_ids}
+        bossPlayerId={match.boss_player_id ?? null}
+        scores={match.scores}
+      />
 
-      <Panel title={`ラウンド ${timing.round_no}`}>
+      <Panel title={panelTitle}>
         <div className="flex flex-col gap-4">
-          <DeadlineTimer serverNow={timing.server_now} deadlineAt={timing.deadline_at} />
+          {timing ? (
+            <DeadlineTimer serverNow={timing.server_now} deadlineAt={timing.deadline_at} />
+          ) : null}
 
-          {deadlinePassed && !judging ? (
+          {waitingOtherPair ? (
+            <p className="text-center text-sm text-slate-400">
+              他のペアの対戦中です。あなたのペアのラウンド開始を待っています…
+            </p>
+          ) : null}
+
+          {timing && deadlinePassed && !judging ? (
             <p className="text-center text-sm text-amber-300">
               締切を過ぎました。未提出のプレイヤーは敗北扱いになります…
             </p>
           ) : null}
 
-          <p className="text-center text-sm text-slate-400">
-            提出 {submitted !== null ? `${submitted}/${expected}` : `—/${expected}`}
-          </p>
+          {timing ? (
+            <p className="text-center text-sm text-slate-400">
+              提出 {submitted !== null ? `${submitted}/${expected}` : `—/${expected}`}
+            </p>
+          ) : null}
 
           {judging ? (
             <p className="text-center text-sm text-indigo-300">判定中…</p>
-          ) : isSpectator || !isAlive ? (
+          ) : waitingOtherPair ? null : isSpectator || !isAlive ? (
             <p className="text-center text-sm text-slate-400">プレイヤーの手札提出を待っています</p>
           ) : match.my_submitted ? (
             <p className="text-center text-sm text-emerald-400">

@@ -2,18 +2,28 @@ import { useCallback, useMemo } from 'react';
 
 import { useDebouncedCallback } from '@/hooks/useDebouncedCallback';
 import { useGame } from '@/hooks/useGame';
-import { ADVANCE_MODE_LABELS, NORMAL_END_LABELS, RULE_LABELS } from '@/lib/labels';
-import { MATCH_CONFIG_LIMITS } from '@/lib/matchConfig';
-import type { MatchConfig, MatchConfigUpdate, RuleType } from '@/types';
-
-const PHASE3_RULES: RuleType[] = ['MINORITY', 'BOSS', 'TOURNAMENT'];
+import {
+  ADVANCE_MODE_LABELS,
+  MINORITY_TIMING_LABELS,
+  NORMAL_END_LABELS,
+  RULE_LABELS,
+} from '@/lib/labels';
+import { eligiblePlayerIds, MATCH_CONFIG_LIMITS, minPlayersFor } from '@/lib/matchConfig';
+import type {
+  MatchConfig,
+  MatchConfigUpdate,
+  MinorityFinishTiming,
+  PlayerView,
+  RuleType,
+} from '@/types';
 
 interface SettingsPanelProps {
   config: MatchConfig;
   editable: boolean;
+  members: PlayerView[];
 }
 
-export function SettingsPanel({ config, editable }: SettingsPanelProps) {
+export function SettingsPanel({ config, editable, members }: SettingsPanelProps) {
   const { send } = useGame();
 
   const pushUpdate = useCallback(
@@ -31,12 +41,23 @@ export function SettingsPanel({ config, editable }: SettingsPanelProps) {
     else pushUpdate(patch);
   };
 
+  const eligible = useMemo(() => eligiblePlayerIds(members), [members]);
+
+  const minorityThresholdMax = Math.max(
+    MATCH_CONFIG_LIMITS.minority_finish_threshold.min,
+    eligible.length - 1,
+  );
+
+  const bossCandidates = useMemo(
+    () => members.filter((m) => eligible.includes(m.player_id)),
+    [members, eligible],
+  );
+
   const ruleOptions = useMemo(
     () =>
       (Object.keys(RULE_LABELS) as RuleType[]).map((key) => ({
         value: key,
         label: RULE_LABELS[key],
-        disabled: PHASE3_RULES.includes(key),
       })),
     [],
   );
@@ -56,9 +77,8 @@ export function SettingsPanel({ config, editable }: SettingsPanelProps) {
           className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-slate-100 disabled:opacity-60"
         >
           {ruleOptions.map((opt) => (
-            <option key={opt.value} value={opt.value} disabled={opt.disabled}>
+            <option key={opt.value} value={opt.value}>
               {opt.label}
-              {opt.disabled ? ' (Phase 3)' : ''}
             </option>
           ))}
         </select>
@@ -85,6 +105,86 @@ export function SettingsPanel({ config, editable }: SettingsPanelProps) {
             ))}
           </div>
         </fieldset>
+      ) : null}
+
+      {config.rule_type === 'MINORITY' ? (
+        <>
+          <div className="flex items-center justify-between gap-3 text-sm">
+            <span className="text-slate-400">NORMAL 移行閾値（生存者数）</span>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                disabled={
+                  !editable ||
+                  config.minority_finish_threshold <=
+                    MATCH_CONFIG_LIMITS.minority_finish_threshold.min
+                }
+                onClick={() =>
+                  onSlider('minority_finish_threshold', config.minority_finish_threshold - 1, false)
+                }
+                className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-700 text-lg disabled:opacity-40"
+              >
+                −
+              </button>
+              <span className="w-8 text-center font-mono text-slate-100">
+                {config.minority_finish_threshold}
+              </span>
+              <button
+                type="button"
+                disabled={!editable || config.minority_finish_threshold >= minorityThresholdMax}
+                onClick={() =>
+                  onSlider('minority_finish_threshold', config.minority_finish_threshold + 1, false)
+                }
+                className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-700 text-lg disabled:opacity-40"
+              >
+                +
+              </button>
+            </div>
+          </div>
+          <fieldset className="flex flex-col gap-2">
+            <legend className="text-sm text-slate-400">NORMAL 移行タイミング</legend>
+            <div className="flex gap-2">
+              {(['IMMEDIATE', 'NEXT_MATCH'] as const).map((timing) => (
+                <button
+                  key={timing}
+                  type="button"
+                  disabled={!editable}
+                  onClick={() => pushUpdate({ minority_finish_timing: timing })}
+                  className={`flex-1 rounded-lg border px-3 py-2 text-sm transition ${
+                    config.minority_finish_timing === timing
+                      ? 'border-violet-400 bg-violet-500/20 text-violet-200'
+                      : 'border-slate-700 text-slate-300'
+                  } disabled:opacity-60`}
+                >
+                  {MINORITY_TIMING_LABELS[timing as MinorityFinishTiming]}
+                </button>
+              ))}
+            </div>
+          </fieldset>
+          <p className="text-xs text-slate-500">
+            開始には {minPlayersFor('MINORITY')} 人以上必要です
+          </p>
+        </>
+      ) : null}
+
+      {config.rule_type === 'BOSS' ? (
+        <label className="flex flex-col gap-1 text-sm">
+          <span className="text-slate-400">ボス（代表）</span>
+          <select
+            disabled={!editable}
+            value={config.boss_player_id ?? ''}
+            onChange={(e) => pushUpdate({ boss_player_id: e.target.value ? e.target.value : null })}
+            className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-slate-100 disabled:opacity-60"
+          >
+            <option value="">未選択</option>
+            {bossCandidates.map((m) => (
+              <option key={m.player_id} value={m.player_id}>
+                {m.display_name}
+                {m.is_cpu ? ' 🤖' : ''}
+              </option>
+            ))}
+          </select>
+        </label>
       ) : null}
 
       <label className="flex flex-col gap-2 text-sm">

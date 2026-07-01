@@ -75,4 +75,6 @@ export interface MatchView {
   my_submitted: boolean;
   boss_player_id?: string | null;
   segment_id?: string | null;
+  /** MINORITY: threshold reached; subsequent rounds use NORMAL judging (§8). */
+  switched_to_normal_finish?: boolean;
 }

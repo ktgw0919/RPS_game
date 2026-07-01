@@ -16,15 +16,16 @@ import {
 
 export function LobbyScreen() {
   const { state, send } = useGame();
-  const { room, members, you, config } = state;
+  const { room, members, you, config, connectionStatus } = state;
   const allowCpu = useAllowCpu();
   const [addCpuBusy, setAddCpuBusy] = useState(false);
 
   if (!room || !config || !you) return null;
 
   const isHost = you.is_host && you.player_id === room.host_player_id;
+  const isConnected = connectionStatus === 'connected';
   const startBlocked = getStartBlockReason(members, config);
-  const canStart = isHost && canStartGame(members, config);
+  const canStart = isHost && isConnected && canStartGame(members, config);
   const hostMember = members.find((m) => m.player_id === room.host_player_id);
   const hostDisconnected = hostMember?.connection_state === 'DISCONNECTED' && !hostMember.is_cpu;
   const roomFull = members.length >= room.capacity;
@@ -80,7 +81,7 @@ export function LobbyScreen() {
       <Divider />
 
       <Panel title="ゲーム設定">
-        <SettingsPanel config={config} editable={isHost} />
+        <SettingsPanel config={config} editable={isHost} members={members} />
       </Panel>
 
       <Divider />
@@ -92,6 +93,10 @@ export function LobbyScreen() {
           </PrimaryButton>
           {startBlocked ? (
             <p className="text-center text-xs text-amber-400">{startBlocked}</p>
+          ) : !isConnected ? (
+            <p className="text-center text-xs text-amber-400">
+              サーバーに接続中です。接続が完了してから開始できます。
+            </p>
           ) : null}
           {needsCpuHint ? (
             <p className="text-center text-xs text-slate-500">

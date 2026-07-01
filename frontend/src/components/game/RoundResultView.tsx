@@ -1,4 +1,5 @@
 import { AliveRoster } from '@/components/game/AliveRoster';
+import { RuleStatusBanner } from '@/components/game/RuleStatusBanner';
 import { SpectatorBanner } from '@/components/game/SpectatorBanner';
 import { Panel, PrimaryButton } from '@/components/ui/Panel';
 import { useGame } from '@/hooks/useGame';
@@ -44,9 +45,19 @@ export function RoundResultView() {
   return (
     <div className="flex flex-col gap-4">
       {isSpectator ? <SpectatorBanner /> : null}
-      <AliveRoster members={members} alivePlayerIds={match.alive_player_ids} />
+      <RuleStatusBanner match={match} members={members} />
+      <AliveRoster
+        members={members}
+        alivePlayerIds={match.alive_player_ids}
+        bossPlayerId={match.boss_player_id ?? null}
+        scores={match.scores}
+      />
 
-      <Panel title={`ラウンド ${lastRoundResult.round_no} の結果`}>
+      <Panel
+        title={`ラウンド ${lastRoundResult.round_no} の結果${
+          lastRoundResult.segment_id ? ` · ${lastRoundResult.segment_id}` : ''
+        }`}
+      >
         <div className="flex flex-col gap-4">
           {lastRoundResult.is_draw ? (
             <p className="text-center text-lg font-semibold text-amber-300">あいこ！</p>
@@ -56,10 +67,22 @@ export function RoundResultView() {
             </p>
           ) : null}
 
+          {Object.keys(lastRoundResult.scores).length > 0 ? (
+            <ul className="text-sm text-slate-300">
+              {Object.entries(lastRoundResult.scores).map(([id, score]) => (
+                <li key={id} className="flex justify-between border-b border-slate-800 py-1">
+                  <span>{nameById.get(id) ?? id}</span>
+                  <span className="font-mono">{score} pt</span>
+                </li>
+              ))}
+            </ul>
+          ) : null}
+
           <ul className="flex flex-col gap-2">
             {Object.entries(lastRoundResult.hands).map(([playerId, hand]) => {
               const meta = HAND_LABELS[hand];
               const eliminated = lastRoundResult.eliminated_player_ids.includes(playerId);
+              const isBoss = playerId === match.boss_player_id;
               return (
                 <li
                   key={playerId}
@@ -67,7 +90,10 @@ export function RoundResultView() {
                     eliminated ? 'bg-rose-500/10 text-rose-200' : 'bg-slate-950/60 text-slate-200'
                   }`}
                 >
-                  <span>{nameById.get(playerId) ?? playerId}</span>
+                  <span>
+                    {nameById.get(playerId) ?? playerId}
+                    {isBoss ? ' · ボス' : ''}
+                  </span>
                   <span>
                     {meta.emoji} {meta.label}
                     {eliminated ? ' · 脱落' : ''}

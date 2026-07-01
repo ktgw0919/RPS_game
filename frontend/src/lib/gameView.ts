@@ -20,6 +20,7 @@ export function matchAfterRoundStart(
       deadline_at: payload.deadline_at,
       alive_player_ids: payload.alive_player_ids,
       my_submitted: false,
+      segment_id: payload.segment_id ?? match.segment_id ?? null,
     };
   }
   if (!config) return null;
@@ -33,6 +34,7 @@ export function matchAfterRoundStart(
     deadline_at: payload.deadline_at,
     my_submitted: false,
     boss_player_id: config.boss_player_id,
+    segment_id: payload.segment_id ?? null,
   };
 }
 
@@ -40,7 +42,10 @@ export function matchAfterRoundStart(
 export function deriveRoundTiming(
   match: MatchView | null,
   serverNow: string | null,
-): Pick<RoundStartPayload, 'round_no' | 'deadline_at' | 'server_now' | 'alive_player_ids'> | null {
+): Pick<
+  RoundStartPayload,
+  'round_no' | 'deadline_at' | 'server_now' | 'alive_player_ids' | 'segment_id'
+> | null {
   if (!match || match.state !== 'COLLECTING' || !match.deadline_at || !serverNow) {
     return null;
   }
@@ -49,5 +54,6 @@ export function deriveRoundTiming(
     deadline_at: match.deadline_at,
     server_now: serverNow,
     alive_player_ids: match.alive_player_ids,
+    segment_id: match.segment_id ?? null,
   };
 }

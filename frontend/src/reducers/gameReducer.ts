@@ -7,6 +7,7 @@
  */
 
 import { deriveRoundTiming, matchAfterRoundStart } from '@/lib/gameView';
+import { isViewerRoundMessage } from '@/lib/roundSegment';
 import type {
   ErrorPayload,
   LobbyUpdatePayload,
@@ -33,11 +34,11 @@ export interface GameState {
   serverNow: string | null;
   roundTiming: Pick<
     RoundStartPayload,
-    'round_no' | 'deadline_at' | 'server_now' | 'alive_player_ids'
+    'round_no' | 'deadline_at' | 'server_now' | 'alive_player_ids' | 'segment_id'
   > | null;
   submissionProgress: Pick<
     SubmissionUpdatePayload,
-    'round_no' | 'submitted_player_ids' | 'expected_count'
+    'round_no' | 'submitted_player_ids' | 'expected_count' | 'segment_id'
   > | null;
   lastRoundResult: RoundResultPayload | null;
   lastMatchEnd: MatchEndPayload | null;
@@ -145,6 +146,13 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
 
     case 'ROUND_START': {
       const payload = action.payload;
+      // First ROUND_START after START_GAME bootstraps match from config; skip pair filter until then.
+      if (
+        state.match &&
+        !isViewerRoundMessage(state.match, state.you, payload.segment_id, payload.alive_player_ids)
+      ) {
+        return state;
+      }
       const config = state.config ?? state.room?.config ?? null;
       const match = matchAfterRoundStart(state.match, config, payload);
       const room = state.room ? { ...state.room, status: 'IN_GAME' as const } : null;
@@ -158,6 +166,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
           deadline_at: payload.deadline_at,
           server_now: payload.server_now,
           alive_player_ids: payload.alive_player_ids,
+          segment_id: payload.segment_id ?? null,
         },
         submissionProgress: null,
         lastRoundResult: null,
@@ -166,6 +175,14 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
 
     case 'SUBMISSION_UPDATE': {
       const payload = action.payload;
+      if (
+        state.match?.rule_type === 'TOURNAMENT' &&
+        state.you &&
+        !state.you.is_spectator &&
+        payload.segment_id !== state.match.segment_id
+      ) {
+        return state;
+      }
       const myId = state.you?.player_id;
       const mySubmitted = myId ? payload.submitted_player_ids.includes(myId) : false;
       const match = state.match ? { ...state.match, my_submitted: mySubmitted } : null;
@@ -176,12 +193,23 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
           round_no: payload.round_no,
           submitted_player_ids: payload.submitted_player_ids,
           expected_count: payload.expected_count,
+          segment_id: payload.segment_id ?? null,
         },
       };
     }
 
     case 'ROUND_RESULT': {
       const payload = action.payload;
+      if (
+        !isViewerRoundMessage(
+          state.match,
+          state.you,
+          payload.segment_id,
+          Object.keys(payload.hands),
+        )
+      ) {
+        return state;
+      }
       const match = state.match
         ? {
             ...state.match,
