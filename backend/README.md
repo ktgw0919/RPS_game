@@ -59,5 +59,7 @@ app/
   utils.py       # generic helpers (time formatting, room code)
   routers/       # rooms.py (REST), ws.py (WebSocket)
   core/          # constants, security, state_store, connection_manager, lifecycle, round_runner, match_history, rate_limit
-  game/          # engine, cpu, start_conditions (rules/: Phase 3)
+  game/          # engine, cpu, draw_resolution, start_conditions; rules/ (minority, boss_battle, tournament)
 ```
+
+**特殊ルール**: 判定は `game/rules/*` + `draw_resolution.py` まで完了。`RoundRunner` / `ws.py` への配線は `../docs/TODO.md` Step R0–R6 を参照。

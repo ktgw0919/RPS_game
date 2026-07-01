@@ -28,10 +28,43 @@
 - [x] Step 13:（開発/デモ用 CPU）`ALLOW_CPU`（`.env`）を `Settings` に追加し、ホストの `ADD_CPU`/`REMOVE_CPU`（ロビーのみ・`ALLOW_CPU=false` は `CPU_NOT_ALLOWED`）で CPU プレイヤーを増減する。CPU はトークン/接続を持たないプレイヤーとして `Player`（`is_cpu`/`cpu_strategy`）に追加し、定員・開始最小人数にカウントする。`ROUND_START` 時に `game/cpu.py` で手を生成（MVP は `RANDOM`）し、締切前に短いランダム遅延で自動提出する。ホスト自動移譲・破棄スイープ・切断検知から CPU を除外する。CPU を含めたソロ進行を結合テストで検証する（`ARCHITECTURE.md` §3/§5/§6/§10）
 
 ## Phase 3: Special Rules Implementation
+> **Step 1–4 完了時点**: `game/rules/*`（minority / boss_battle / tournament）と `game/draw_resolution.py` の**純粋ロジック＋単体テスト**まで。`RoundRunner` / `ws.py` のルール配線・フロント UI は下記「特殊ルール：ランタイム統合」へ。
+
 - [x] Step 1: 「少数派勝利ルール (Minority Rule)」の集計・判定アルゴリズムの実装とテスト（`game/rules/minority.py`）。生存者が閾値以下で NORMAL 決着へ移行（閾値・タイミングは `MatchConfig`）
 - [x] Step 2: 「代表ルール (Boss Battle)」の非対称ゲームロジックの実装（`game/rules/boss_battle.py`）。ボスはホスト指名・非参加者（勝者カウント対象外）
 - [x] Step 3: 「1対1トーナメント」の自動進行（ブラケット生成・奇数は bye・ペアごとの独立判定・ペア内あいこ再戦）の実装（`game/rules/tournament.py`）。並行するペアはラウンド系メッセージの `segment_id`（`ARCHITECTURE.md` §4）で識別する
 - [x] Step 4: 各ルールの「あいこ」再戦フローと `MatchConfig.max_draw_rounds`（あいこ回数の上限到達時は引き分け終了）の厳密化。各ルールをユニットテストで検証
+
+## 特殊ルール：ランタイム統合（Phase 3 続き）
+
+> **現状ギャップ**: `game/rules/*` と `game/draw_resolution.py` の純粋ロジックは完了。`RoundRunner` は `judge_normal_round` / `resolve_after_normal_round` のみ。`ws.py` の `START_GAME` は `min_players_for()` のみ（`can_start()` 未使用）。`SUBMIT_HAND` の `segment_id` は runner に未中継。`models.Match` に `bracket` 等の設計フィールドは未追加（`ARCHITECTURE.md` §5 と実装の差分あり）。
+>
+> **推奨実装順**: R0（モデル・ストア）→ R1（`ws.py`）→ R2（MINORITY）→ R3（BOSS）→ R4（TOURNAMENT）→ R5（WS 結合テスト）→ R6（フロント UI）。詳細は `ARCHITECTURE.md` §5.1 / §7.1。
+
+### 前提 — `Match` / `state_store`（Step R0）
+
+- [ ] **`Match` 状態拡張**（`models.py`）: `switched_to_normal_finish`（MINORITY→NORMAL 移行済み）、`tournament_bracket_round` / `tournament_active_pairs` / `tournament_segment_rounds`（TOURNAMENT 区画別 `Round`）。`boss_player_id` は `START_GAME` 時に `config` からコピー
+- [ ] **`state_store` API**: ルール別 `start_match` 後初期化、`begin_segment_round` / `save_segment_submission`（TOURNAMENT）、`apply_score_deltas`（BOSS）、`set_switched_to_normal_finish`
+
+### `ws.py` 配線（Step R1）
+
+- [ ] **`START_GAME`**: `min_players_for` を **`can_start(room)`**（`game/start_conditions.py`）に置換。BOSS の `boss_player_id ∈ S` 等を `START_CONDITION_UNMET` で拒否
+- [ ] **`START_GAME` 初期化**: ルール別に match をセットアップ（BOSS: `boss_player_id` コピー、TOURNAMENT: `build_tournament_bracket`、MINORITY: 移行フラグ初期化）
+- [ ] **`SUBMIT_HAND`**: `payload.segment_id` を `RoundRunner.submit_hand` に中継。TOURNAMENT は必須＋ペア所属検証、他ルールは `null` のみ
+- [ ] **付随**: ボス指名プレイヤー退出時に `config.boss_player_id` を `null` 化して `SETTINGS_UPDATE`（§8）。MINORITY `NEXT_MATCH` タイミングで閾値到達時はマッチ終了後ロビー復帰で次回 `rule_type=NORMAL` へ（`RETURN_TO_LOBBY` 経路）
+
+### `RoundRunner` — ルール別統合（Step R2–R4）
+
+`_resolve_round` にルール別ディスパッチ（`judge_*` + `resolve_after_*`）を追加。NORMAL の既存挙動は回帰テストで維持。
+
+- [ ] **Step R2 — MINORITY**: 単一区画（`segment_id=null`）。`effective_judging_rule` で `judge_minority_round` / `judge_normal_round` を切替。`resolve_after_minority_round` と `switched_to_normal_finish` 更新
+- [ ] **Step R3 — BOSS**: 期待提出者＝alive 全員（ボス含む）。`judge_boss_round` + `resolve_after_boss_round`。`ROUND_RESULT.scores` に加点反映、`hands` にボス手を含める（`winner_ids` はボス除外）
+- [ ] **Step R4 — TOURNAMENT**: `segment_id` 単位の並行タイマー（§7.1、キー `(room, segment_id)` は既存）。アクティブペアごとに `ROUND_START`（`alive_player_ids` はペアメンバー、`expected_count=2`）。区画ごと `_resolve_round` → ステージ完了バリア → `collect_round_winners` / `next_bracket_round`。bye は `ROUND_START` 不要。`Match.state` はステージ集約（§7.1 注記）。`MatchView` / `_match_view` は viewer の所属ペアの `deadline_at` を返す拡張
+
+### 検証・フロント（Step R5–R6）
+
+- [ ] **Step R5 — WS 結合テスト**: `test_ws_round.py` パターンで MINORITY（3人・閾値 NORMAL 移行）、BOSS（スコア・勝者確定）、TOURNAMENT（4人・ペア内あいこ・bye）の主要シナリオ。既存 NORMAL 回帰を維持
+- [ ] **Step R6 — フロント UI**（`SCREENS.md` §4.2 / ゲーム画面）: `SettingsPanel` で特殊ルール選択を有効化、`minority_finish_*` / `boss_player_id`、ゲーム画面の `segment_id` / ボス表示 / 得点、`SUBMIT_HAND` に `segment_id` 付与（TOURNAMENT）
 
 ## Phase 4: Frontend Integration & Polish
 - [x] Step 1: `src/hooks/useWebSocket.ts` を作成し、WebSocket でゲームループを扱う。ゲーム状態は React Context + `useReducer` で管理し、`STATE_SYNC` をスナップショット・他メッセージを差分アクションとして reducer で適用する（SWR は MVP では導入せず、REST は軽量 fetch ラッパーのみ）
@@ -52,6 +85,6 @@
 設計上は MVP 要件だが、上記フェーズの Step には含まれていない、または UI のみ未着手の項目。
 
 - [x] **`match_history` 永続化**（`ARCHITECTURE.md` §6）: マッチ終了時に MongoDB へ確定結果を保存（`core/match_history.py`）
-- [x] **QR コード共有**（`SCREENS.md` §4.1.1）: 参加リンク（`/join/:code`）の QR をモーダル表示（`ShareQrModal` / `react-qr-code`）。コード・リンクのコピーは `SharePanel` に実装済み
-- [x] **ルーム操作 UI**（`SCREENS.md` §4.7）: `RoomActionsPanel`・`useExitRoom`・退室／別ルーム参加／新規作成（試合中は移動系非活性）
+- [ ] **QR コード共有**（`SCREENS.md` §4.1）: 参加リンク（`/join/:code`）の QR をモーダル表示（`ShareQrModal` / `react-qr-code`）。コード・リンクのコピーは `SharePanel` に実装済み
+- [ ] **ルーム操作 UI**（`SCREENS.md` §5）: `RoomActionsPanel`・`useExitRoom`・退室／別ルーム参加／新規作成（試合中は移動系非活性）。WS の `LEAVE` は実装済み
 - [ ] **フロント E2E テスト**（任意）: Playwright 等でのブラウザ結合テスト
