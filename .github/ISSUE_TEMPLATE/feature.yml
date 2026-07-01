@@ -1,0 +1,29 @@
+name: Feature / TODO Step
+description: 新機能または docs/TODO.md の Step 対応
+title: "[feat]: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        設計の正本は `docs/`。実装前に `ARCHITECTURE.md` / `TODO.md` を確認してください。
+  - type: textarea
+    id: summary
+    attributes:
+      label: 概要
+      description: 何を実装するか
+      placeholder: Phase 3 Step 1 — 少数派勝利ルール
+    validations:
+      required: true
+  - type: input
+    id: todo-ref
+    attributes:
+      label: 関連 TODO / docs 参照
+      placeholder: docs/TODO.md Phase 3 Step 1, ARCHITECTURE.md §9
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: 受け入れ条件
+      description: 完了の定義（テスト・UI・WS 等）
+    validations:
+      required: true
