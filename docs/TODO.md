@@ -85,6 +85,6 @@
 設計上は MVP 要件だが、上記フェーズの Step には含まれていない、または UI のみ未着手の項目。
 
 - [x] **`match_history` 永続化**（`ARCHITECTURE.md` §6）: マッチ終了時に MongoDB へ確定結果を保存（`core/match_history.py`）
-- [ ] **QR コード共有**（`SCREENS.md` §4.1）: 参加リンク（`/join/:code`）の QR をモーダル表示（`ShareQrModal` / `react-qr-code`）。コード・リンクのコピーは `SharePanel` に実装済み
-- [ ] **ルーム操作 UI**（`SCREENS.md` §5）: `RoomActionsPanel`・`useExitRoom`・退室／別ルーム参加／新規作成（試合中は移動系非活性）。WS の `LEAVE` は実装済み
+- [x] **QR コード共有**（`SCREENS.md` §4.1）: 参加リンク（`/join/:code`）の QR をモーダル表示（`ShareQrModal` / `react-qr-code`）。コード・リンクのコピーは `SharePanel` に実装済み
+- [x] **ルーム操作 UI**（`SCREENS.md` §5）: `RoomActionsPanel`・`useExitRoom`・退室／別ルーム参加／新規作成（試合中は移動系非活性）。WS の `LEAVE` は実装済み
 - [ ] **フロント E2E テスト**（任意）: Playwright 等でのブラウザ結合テスト

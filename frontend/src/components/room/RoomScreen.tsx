@@ -1,4 +1,5 @@
 import { ConnectionBanner } from '@/components/room/ConnectionBanner';
+import { RoomActionsPanel } from '@/components/room/RoomActionsPanel';
 import { SessionNotices } from '@/components/room/SessionNotices';
 import { GameScreen } from '@/components/game/GameScreen';
 import { LobbyScreen } from '@/components/lobby/LobbyScreen';
@@ -15,6 +16,7 @@ export function RoomScreen() {
       <ConnectionBanner />
       <SessionNotices />
       {inLobby ? <LobbyScreen /> : <GameScreen />}
+      <RoomActionsPanel />
     </div>
   );
 }

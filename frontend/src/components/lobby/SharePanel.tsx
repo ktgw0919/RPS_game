@@ -1,5 +1,6 @@
 import { useState } from 'react';
 
+import { ShareQrModal } from '@/components/lobby/ShareQrModal';
 import { SecondaryButton } from '@/components/ui/Panel';
 
 interface SharePanelProps {
@@ -8,6 +9,7 @@ interface SharePanelProps {
 
 export function SharePanel({ roomCode }: SharePanelProps) {
   const [copied, setCopied] = useState(false);
+  const [qrOpen, setQrOpen] = useState(false);
   const joinUrl = `${window.location.origin}/join/${roomCode}`;
 
   const handleCopy = async () => {
@@ -16,7 +18,6 @@ export function SharePanel({ roomCode }: SharePanelProps) {
       setCopied(true);
       window.setTimeout(() => setCopied(false), 2000);
     } catch {
-      // fallback for older browsers
       window.prompt('ルームコードをコピーしてください', roomCode);
     }
   };
@@ -32,22 +33,32 @@ export function SharePanel({ roomCode }: SharePanelProps) {
   };
 
   return (
-    <div className="flex flex-col gap-3">
-      <div className="flex items-center justify-between gap-3">
-        <div>
-          <p className="text-xs text-slate-500">ルームコード</p>
-          <p className="font-mono text-2xl font-bold tracking-widest text-white">{roomCode}</p>
+    <>
+      <div className="flex flex-col gap-3">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <p className="text-xs text-slate-500">ルームコード</p>
+            <p className="font-mono text-2xl font-bold tracking-widest text-white">{roomCode}</p>
+          </div>
+          <div className="flex flex-wrap justify-end gap-2">
+            <SecondaryButton onClick={() => setQrOpen(true)}>QR</SecondaryButton>
+            <SecondaryButton onClick={() => void handleCopy()}>
+              {copied ? 'コピー済' : 'コード'}
+            </SecondaryButton>
+            <SecondaryButton onClick={() => void handleCopyLink()}>リンク</SecondaryButton>
+          </div>
         </div>
-        <div className="flex gap-2">
-          <SecondaryButton onClick={() => void handleCopy()}>
-            {copied ? 'コピー済' : 'コード'}
-          </SecondaryButton>
-          <SecondaryButton onClick={() => void handleCopyLink()}>リンク</SecondaryButton>
-        </div>
+        <p className="text-xs text-slate-500">
+          友だちに QR・コード・リンクを共有して参加してもらいましょう。
+        </p>
       </div>
-      <p className="text-xs text-slate-500">
-        友だちにコードまたはリンクを共有して参加してもらいましょう。
-      </p>
-    </div>
+
+      <ShareQrModal
+        open={qrOpen}
+        onClose={() => setQrOpen(false)}
+        roomCode={roomCode}
+        joinUrl={joinUrl}
+      />
+    </>
   );
 }
