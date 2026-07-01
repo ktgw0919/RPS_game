@@ -41,10 +41,20 @@ from app.game.draw_resolution import (
     resolve_after_boss_round,
     resolve_after_minority_round,
     resolve_after_normal_round,
+    resolve_after_tournament_pair,
 )
 from app.game.engine import RoundOutcome, judge_normal_round
 from app.game.rules.boss_battle import BossRoundOutcome, judge_boss_round
 from app.game.rules.minority import effective_judging_rule, judge_minority_round
+from app.game.rules.tournament import (
+    TournamentPair as RuleTournamentPair,
+)
+from app.game.rules.tournament import (
+    collect_round_winners,
+    judge_tournament_pair,
+    next_bracket_round,
+    tournament_champion,
+)
 from app.models import (
     CpuStrategy,
     ErrorCode,
@@ -63,6 +73,7 @@ from app.models import (
     RoundStartPayload,
     RuleType,
     SubmissionUpdatePayload,
+    TournamentPair,
     make_envelope,
 )
 from app.utils import isoformat_utc, utcnow
@@ -113,6 +124,10 @@ class RoundRunner:
     # ------------------------------------------------------------------ API
     async def start_first_round(self, room: Room) -> None:
         """Begin round 1 right after START_GAME created the match (COLLECTING)."""
+        match = room.match
+        if match is not None and match.rule_type is RuleType.TOURNAMENT:
+            await self._start_tournament_stage(room)
+            return
         await self._start_round(room, None)
 
     async def submit_hand(
@@ -140,24 +155,53 @@ class RoundRunner:
             if match is None or room.status is not RoomStatus.IN_GAME:
                 return ErrorCode.INVALID_STATE
             if match.rule_type is RuleType.TOURNAMENT:
-                return ErrorCode.INVALID_STATE
-            if segment_id is not None:
-                return ErrorCode.INVALID_STATE
-            resolved_segment_id = None
-            if match.state is not MatchState.COLLECTING or match.current_round is None:
-                return ErrorCode.INVALID_STATE
-            if player.is_spectator or player.player_id not in match.alive_player_ids:
-                return ErrorCode.NOT_ALIVE
-            if round_no != match.current_round_no:
-                return ErrorCode.INVALID_STATE
+                if segment_id is None:
+                    return ErrorCode.INVALID_STATE
+                if match.state is not MatchState.COLLECTING:
+                    return ErrorCode.INVALID_STATE
+                pair = self._pair_for_player(match.tournament_active_pairs, player.player_id)
+                if pair is None or pair.segment_id != segment_id or len(pair.players) == 1:
+                    return ErrorCode.INVALID_STATE
+                if player.is_spectator or player.player_id not in pair.players:
+                    return ErrorCode.NOT_ALIVE
+                rnd = match.tournament_segment_rounds.get(segment_id)
+                if rnd is None or rnd.judged_at is not None:
+                    return ErrorCode.INVALID_STATE
+                if round_no != rnd.round_no:
+                    return ErrorCode.INVALID_STATE
+                self._store.save_segment_submission(match, segment_id, player.player_id, hand)
+                self._store.touch(room)
+                submitted = [pid for pid in pair.players if pid in rnd.submissions]
+                resolved_segment_id = segment_id
+                submission_update = self._submission_update_msg(
+                    match,
+                    submitted,
+                    segment_id,
+                    expected_count=2,
+                    round_no=rnd.round_no,
+                )
+                all_submitted = len(submitted) >= 2
+                current_round_no = rnd.round_no
+            else:
+                if segment_id is not None:
+                    return ErrorCode.INVALID_STATE
+                resolved_segment_id = None
+                if match.state is not MatchState.COLLECTING or match.current_round is None:
+                    return ErrorCode.INVALID_STATE
+                if player.is_spectator or player.player_id not in match.alive_player_ids:
+                    return ErrorCode.NOT_ALIVE
+                if round_no != match.current_round_no:
+                    return ErrorCode.INVALID_STATE
 
-            self._store.save_submission(match, player.player_id, hand)
-            self._store.touch(room)
-            rnd = match.current_round
-            submitted = [pid for pid in match.alive_player_ids if pid in rnd.submissions]
-            submission_update = self._submission_update_msg(match, submitted, resolved_segment_id)
-            all_submitted = len(submitted) >= len(match.alive_player_ids)
-            current_round_no = match.current_round_no
+                self._store.save_submission(match, player.player_id, hand)
+                self._store.touch(room)
+                rnd = match.current_round
+                submitted = [pid for pid in match.alive_player_ids if pid in rnd.submissions]
+                submission_update = self._submission_update_msg(
+                    match, submitted, resolved_segment_id
+                )
+                all_submitted = len(submitted) >= len(match.alive_player_ids)
+                current_round_no = match.current_round_no
 
         assert submission_update is not None
         await self._manager.broadcast(room.room_code, submission_update)
@@ -183,7 +227,11 @@ class RoundRunner:
                 return ErrorCode.INVALID_STATE
             proceed = True
         if proceed:
-            await self._start_round(room, segment_id)
+            match = room.match
+            if match is not None and match.rule_type is RuleType.TOURNAMENT:
+                await self._start_tournament_stage(room)
+            else:
+                await self._start_round(room, segment_id)
         return None
 
     async def shutdown(self) -> None:
@@ -225,6 +273,301 @@ class RoundRunner:
         self._schedule_deadline(room, segment_id, round_no, seconds)
         self._schedule_cpu_submissions(room, segment_id, round_no)
 
+    async def _start_tournament_stage(self, room: Room) -> None:
+        """Open parallel segment rounds for the current bracket stage (§7.1)."""
+        lock = self._store.room_lock(room.room_code)
+        messages: list[dict[str, Any]] = []
+        segments_to_schedule: list[tuple[TournamentPair, int, float]] = []
+        async with lock:
+            match = room.match
+            if match is None or match.state is MatchState.MATCH_END:
+                return
+            if match.state is MatchState.ROUND_RESULT:
+                self._store.set_match_state(match, MatchState.COLLECTING)
+            if match.state is not MatchState.COLLECTING:
+                return
+
+            stage_round_no = match.current_round_no + 1
+            now = self._now()
+            deadline = now + timedelta(seconds=match.config.round_time_limit_sec)
+            seconds = float(match.config.round_time_limit_sec)
+
+            for pair in match.tournament_active_pairs:
+                if len(pair.players) == 1:
+                    continue
+                self._store.begin_segment_round(
+                    match, pair.segment_id, round_no=stage_round_no, deadline_at=deadline
+                )
+                messages.append(
+                    self._round_start_msg(
+                        match,
+                        deadline,
+                        now,
+                        pair.segment_id,
+                        alive_player_ids=list(pair.players),
+                        round_no=stage_round_no,
+                    )
+                )
+                segments_to_schedule.append((pair, stage_round_no, seconds))
+            self._store.touch(room)
+
+        for msg in messages:
+            await self._manager.broadcast(room.room_code, msg)
+        for pair, round_no, seconds in segments_to_schedule:
+            self._schedule_deadline(room, pair.segment_id, round_no, seconds)
+            self._schedule_cpu_submissions(room, pair.segment_id, round_no)
+
+        if await self._maybe_complete_tournament_stage(room):
+            return
+
+    async def _start_tournament_segment_replay(
+        self, room: Room, pair: TournamentPair, round_no: int
+    ) -> None:
+        """Replay one tournament pair after a draw (§7.1)."""
+        lock = self._store.room_lock(room.room_code)
+        msg: dict[str, Any] | None = None
+        seconds = 0.0
+        async with lock:
+            match = room.match
+            if match is None or match.state is MatchState.MATCH_END:
+                return
+            if match.state is MatchState.ROUND_RESULT:
+                self._store.set_match_state(match, MatchState.COLLECTING)
+            now = self._now()
+            deadline = now + timedelta(seconds=match.config.round_time_limit_sec)
+            self._store.begin_segment_round(
+                match, pair.segment_id, round_no=round_no, deadline_at=deadline
+            )
+            self._store.touch(room)
+            seconds = float(match.config.round_time_limit_sec)
+            msg = self._round_start_msg(
+                match,
+                deadline,
+                now,
+                pair.segment_id,
+                alive_player_ids=list(pair.players),
+                round_no=round_no,
+            )
+
+        assert msg is not None
+        await self._manager.broadcast(room.room_code, msg)
+        self._schedule_deadline(room, pair.segment_id, round_no, seconds)
+        self._schedule_cpu_submissions(room, pair.segment_id, round_no)
+
+    async def _resolve_tournament_segment(
+        self, room: Room, segment_id: str, expected_round_no: int
+    ) -> None:
+        lock = self._store.room_lock(room.room_code)
+        messages: list[dict[str, Any]] = []
+        ended = False
+        replay_pair: TournamentPair | None = None
+        replay_round_no = 0
+        advance_mode = RoundAdvanceMode.AUTO
+        result_display_sec = 0
+        stage_complete = False
+        async with lock:
+            match = room.match
+            if match is None:
+                return
+            pair = self._pair_for_segment(match.tournament_active_pairs, segment_id)
+            if pair is None or len(pair.players) == 1:
+                return
+            rnd = match.tournament_segment_rounds.get(segment_id)
+            if rnd is None or rnd.judged_at is not None:
+                return
+            if match.state is not MatchState.COLLECTING:
+                return
+            if rnd.round_no != expected_round_no:
+                return
+
+            now = self._now()
+            self._store.set_match_state(match, MatchState.JUDGING)
+            player_a, player_b = pair.players[0], pair.players[1]
+            draw_count = match.tournament_segment_draw_counts.get(segment_id, 0)
+            outcome = judge_tournament_pair(player_a, player_b, rnd.submissions)
+            pair_progress = resolve_after_tournament_pair(
+                outcome,
+                pair.players,
+                draw_count,
+                match.config.max_draw_rounds,
+            )
+            self._store.mark_segment_judged(match, segment_id, now=now)
+            match.tournament_segment_draw_counts[segment_id] = pair_progress.draw_round_count
+
+            advance_mode = match.config.round_advance_mode
+            result_display_sec = match.config.result_display_sec
+
+            if pair_progress.match_ended:
+                assert pair_progress.match_end_reason is not None
+                self._store.set_match_state(match, MatchState.ROUND_RESULT)
+                messages.append(
+                    self._round_result_msg(
+                        match,
+                        rnd,
+                        outcome,
+                        list(pair.players),
+                        list(outcome.eliminated_ids),
+                        segment_id,
+                    )
+                )
+                self._store.finalize_match(match, winner_ids=[], now=now)
+                messages.append(self._match_end_msg(match, pair_progress.match_end_reason))
+                ended = True
+            elif pair_progress.replay_pair:
+                self._store.set_match_state(match, MatchState.ROUND_RESULT)
+                self._store.set_match_state(match, MatchState.COLLECTING)
+                messages.append(
+                    self._round_result_msg(
+                        match,
+                        rnd,
+                        outcome,
+                        list(pair.players),
+                        [],
+                        segment_id,
+                    )
+                )
+                replay_pair = pair
+                replay_round_no = rnd.round_no + 1
+            elif pair_progress.pair_complete:
+                assert pair_progress.winner_id is not None
+                match.tournament_segment_winners[segment_id] = pair_progress.winner_id
+                messages.append(
+                    self._round_result_msg(
+                        match,
+                        rnd,
+                        outcome,
+                        [pair_progress.winner_id],
+                        list(outcome.eliminated_ids),
+                        segment_id,
+                    )
+                )
+                stage_complete = self._tournament_stage_complete(match)
+                if stage_complete:
+                    self._store.set_match_state(match, MatchState.ROUND_RESULT)
+                else:
+                    self._store.set_match_state(match, MatchState.ROUND_RESULT)
+                    self._store.set_match_state(match, MatchState.COLLECTING)
+            self._store.touch(room)
+
+        for msg in messages:
+            await self._manager.broadcast(room.room_code, msg)
+
+        if ended:
+            self._cancel_all_room_timers(room.room_code)
+            await self._persist_match_history(room)
+            return
+        if replay_pair is not None:
+            await self._start_tournament_segment_replay(room, replay_pair, replay_round_no)
+            return
+        if stage_complete:
+            await self._after_tournament_stage(room, advance_mode, result_display_sec)
+
+    async def _maybe_complete_tournament_stage(self, room: Room) -> bool:
+        """If only byes remain unresolved, finish the stage immediately."""
+        lock = self._store.room_lock(room.room_code)
+        complete = False
+        async with lock:
+            match = room.match
+            if match is None:
+                return False
+            complete = self._tournament_stage_complete(match)
+            if complete:
+                self._store.set_match_state(match, MatchState.ROUND_RESULT)
+        if complete:
+            match = room.match
+            assert match is not None
+            await self._after_tournament_stage(
+                room, match.config.round_advance_mode, match.config.result_display_sec
+            )
+        return complete
+
+    async def _after_tournament_stage(
+        self,
+        room: Room,
+        advance_mode: RoundAdvanceMode,
+        result_display_sec: int,
+    ) -> None:
+        lock = self._store.room_lock(room.room_code)
+        messages: list[dict[str, Any]] = []
+        ended = False
+        async with lock:
+            match = room.match
+            if match is None or not self._tournament_stage_complete(match):
+                return
+            pairs = list(match.tournament_active_pairs)
+            segment_winners = dict(match.tournament_segment_winners)
+            match.tournament_segment_winners = {}
+            outcomes = {
+                seg_id: RoundOutcome(
+                    is_draw=False,
+                    winner_ids=(winner_id,),
+                    eliminated_ids=(),
+                )
+                for seg_id, winner_id in segment_winners.items()
+            }
+            rule_pairs = [
+                RuleTournamentPair(segment_id=p.segment_id, players=p.players) for p in pairs
+            ]
+            winners = list(collect_round_winners(rule_pairs, outcomes))
+            champion = tournament_champion(winners)
+            now = self._now()
+            self._store.set_alive(match, winners)
+            if champion is not None:
+                self._store.finalize_match(match, winner_ids=[champion], now=now)
+                messages.append(self._match_end_msg(match, MatchEndReason.DECIDED))
+                ended = True
+            else:
+                next_round = match.tournament_bracket_round + 1
+                next_pairs = next_bracket_round(winners, next_round)
+                assert next_pairs is not None
+                match.tournament_bracket_round = next_round
+                match.tournament_active_pairs = [
+                    TournamentPair(segment_id=p.segment_id, players=p.players) for p in next_pairs
+                ]
+                match.tournament_segment_rounds = {}
+                match.tournament_segment_draw_counts = {}
+                match.tournament_segment_winners = {}
+                for pair in match.tournament_active_pairs:
+                    if len(pair.players) == 1:
+                        match.tournament_segment_winners[pair.segment_id] = pair.players[0]
+            self._store.touch(room)
+
+        for msg in messages:
+            await self._manager.broadcast(room.room_code, msg)
+        if ended:
+            self._cancel_all_room_timers(room.room_code)
+            await self._persist_match_history(room)
+            return
+        if advance_mode is RoundAdvanceMode.AUTO:
+            await self._result_delay_sleep(result_display_sec)
+            await self._start_tournament_stage(room)
+
+    def _tournament_stage_complete(self, match: Match) -> bool:
+        for pair in match.tournament_active_pairs:
+            if pair.segment_id not in match.tournament_segment_winners:
+                return False
+        return True
+
+    @staticmethod
+    def _pair_for_player(pairs: list[TournamentPair], player_id: str) -> TournamentPair | None:
+        for pair in pairs:
+            if player_id in pair.players:
+                return pair
+        return None
+
+    @staticmethod
+    def _pair_for_segment(pairs: list[TournamentPair], segment_id: str) -> TournamentPair | None:
+        for pair in pairs:
+            if pair.segment_id == segment_id:
+                return pair
+        return None
+
+    def _cancel_all_room_timers(self, room_code: str) -> None:
+        prefix = room_code.upper()
+        for key in list(self._timers):
+            if key[0] == prefix:
+                self._cancel_key(key)
+
     async def _cpu_submit_after_delay(
         self,
         room: Room,
@@ -232,12 +575,14 @@ class RoundRunner:
         round_no: int,
         hand: Hand,
         delay: float,
+        *,
+        segment_id: str | None = None,
     ) -> None:
         try:
             await self._cpu_delay_sleep(delay)
         except asyncio.CancelledError:
             return
-        err = await self.submit_hand(room, player, round_no, hand)
+        err = await self.submit_hand(room, player, round_no, hand, segment_id=segment_id)
         if err is not None:
             logger.debug(
                 "CPU submit ignored for %s in %s: %s",
@@ -248,17 +593,34 @@ class RoundRunner:
 
     def _schedule_cpu_submissions(self, room: Room, segment_id: str | None, round_no: int) -> None:
         match = room.match
-        if match is None or match.current_round is None:
+        if match is None:
             return
+        if match.rule_type is RuleType.TOURNAMENT:
+            if segment_id is None:
+                return
+            pair = self._pair_for_segment(match.tournament_active_pairs, segment_id)
+            if pair is None or len(pair.players) == 1:
+                return
+            if match.tournament_segment_rounds.get(segment_id) is None:
+                return
+            player_ids = list(pair.players)
+        else:
+            if match.current_round is None:
+                return
+            player_ids = list(match.alive_player_ids)
         limit = float(match.config.round_time_limit_sec)
-        for pid in match.alive_player_ids:
+        for pid in player_ids:
             player = self._store.get_player(room, pid)
             if player is None or not player.is_cpu:
                 continue
             strategy = player.cpu_strategy or CpuStrategy.RANDOM
             hand = self._pick_hand(strategy)
             delay = compute_submit_delay(limit, uniform=self._uniform)
-            self._spawn(self._cpu_submit_after_delay(room, player, round_no, hand, delay))
+            self._spawn(
+                self._cpu_submit_after_delay(
+                    room, player, round_no, hand, delay, segment_id=segment_id
+                )
+            )
 
     async def _deadline_timer(
         self, room: Room, segment_id: str | None, round_no: int, seconds: float
@@ -270,6 +632,17 @@ class RoundRunner:
         await self._resolve_round(room, segment_id, round_no)
 
     async def _resolve_round(
+        self, room: Room, segment_id: str | None, expected_round_no: int
+    ) -> None:
+        match = room.match
+        if match is not None and match.rule_type is RuleType.TOURNAMENT:
+            if segment_id is None:
+                return
+            await self._resolve_tournament_segment(room, segment_id, expected_round_no)
+            return
+        await self._resolve_standard_round(room, segment_id, expected_round_no)
+
+    async def _resolve_standard_round(
         self, room: Room, segment_id: str | None, expected_round_no: int
     ) -> None:
         lock = self._store.room_lock(room.room_code)
@@ -437,24 +810,39 @@ class RoundRunner:
 
     # --------------------------------------------------------------- messages
     def _round_start_msg(
-        self, match: Match, deadline: datetime, now: datetime, segment_id: str | None
+        self,
+        match: Match,
+        deadline: datetime,
+        now: datetime,
+        segment_id: str | None,
+        *,
+        alive_player_ids: list[str] | None = None,
+        round_no: int | None = None,
     ) -> dict[str, Any]:
         payload = RoundStartPayload(
-            round_no=match.current_round_no,
+            round_no=round_no if round_no is not None else match.current_round_no,
             deadline_at=isoformat_utc(deadline),
             server_now=isoformat_utc(now),
-            alive_player_ids=list(match.alive_player_ids),
+            alive_player_ids=alive_player_ids or list(match.alive_player_ids),
             segment_id=segment_id,
         )
         return make_envelope(MessageType.ROUND_START, payload.model_dump(mode="json"))
 
     def _submission_update_msg(
-        self, match: Match, submitted_player_ids: list[str], segment_id: str | None
+        self,
+        match: Match,
+        submitted_player_ids: list[str],
+        segment_id: str | None,
+        *,
+        expected_count: int | None = None,
+        round_no: int | None = None,
     ) -> dict[str, Any]:
         payload = SubmissionUpdatePayload(
-            round_no=match.current_round_no,
+            round_no=round_no if round_no is not None else match.current_round_no,
             submitted_player_ids=submitted_player_ids,
-            expected_count=len(match.alive_player_ids),
+            expected_count=expected_count
+            if expected_count is not None
+            else len(match.alive_player_ids),
             segment_id=segment_id,
         )
         return make_envelope(MessageType.SUBMISSION_UPDATE, payload.model_dump(mode="json"))

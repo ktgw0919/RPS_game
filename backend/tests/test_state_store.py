@@ -263,6 +263,7 @@ def test_start_match_tournament_builds_active_pairs() -> None:
     assert [p.segment_id for p in match.tournament_active_pairs] == ["r0-p0", "r0-p1"]
     assert match.tournament_active_pairs[0].players == ("h", "p2")
     assert match.tournament_active_pairs[1].players == ("p3",)
+    assert match.tournament_segment_winners == {"r0-p1": "p3"}
 
 
 def test_begin_segment_round_and_submissions() -> None:

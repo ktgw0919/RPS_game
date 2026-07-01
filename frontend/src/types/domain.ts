@@ -74,4 +74,5 @@ export interface MatchView {
   deadline_at: string | null;
   my_submitted: boolean;
   boss_player_id?: string | null;
+  segment_id?: string | null;
 }

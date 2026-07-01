@@ -227,7 +227,7 @@
 |---|---|---|
 | `ws.py` `START_GAME` | `can_start()` + `init_match_for_rule`（R0/R1 実装済み） | ルール別 match 初期化 |
 | `ws.py` `SUBMIT_HAND` | `segment_id` 無視 | runner へ `segment_id` 中継（TOURNAMENT 必須） |
-| `RoundRunner` | `judge_normal_round` のみ | `rule_type`（＋ MINORITY の移行フラグ）で `judge_*` / `resolve_after_*` をディスパッチ（**MINORITY・BOSS 実装済み** R2–R3） |
+| `RoundRunner` | `judge_normal_round` のみ | `rule_type`（＋ MINORITY の移行フラグ）で `judge_*` / `resolve_after_*` をディスパッチ（**MINORITY・BOSS・TOURNAMENT 実装済み** R2–R4） |
 | タイマー | `(room, null)` 1本 | TOURNAMENT はアクティブペアごとに `(room, segment_id)` 並行 |
 
 **実装順（推奨）**: MINORITY（単一区画・NORMAL と同型）→ BOSS（scores・ボス手）→ TOURNAMENT（区画別ラウンド・ステージバリア）。
