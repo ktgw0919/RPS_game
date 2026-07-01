@@ -2,6 +2,7 @@ import { useCallback, useMemo } from 'react';
 
 import { useDebouncedCallback } from '@/hooks/useDebouncedCallback';
 import { useGame } from '@/hooks/useGame';
+import { useHostControlsEnabled } from '@/hooks/useWsConnection';
 import {
   ADVANCE_MODE_LABELS,
   MINORITY_TIMING_LABELS,
@@ -25,12 +26,15 @@ interface SettingsPanelProps {
 
 export function SettingsPanel({ config, editable, members }: SettingsPanelProps) {
   const { send } = useGame();
+  const hostControlsEnabled = useHostControlsEnabled();
+  const controlsEnabled = editable && hostControlsEnabled;
 
   const pushUpdate = useCallback(
     (patch: MatchConfigUpdate) => {
+      if (!controlsEnabled) return;
       send('UPDATE_SETTINGS', { config: patch });
     },
-    [send],
+    [send, controlsEnabled],
   );
 
   const debouncedPush = useDebouncedCallback(pushUpdate, 300);
@@ -65,13 +69,17 @@ export function SettingsPanel({ config, editable, members }: SettingsPanelProps)
   return (
     <div className="flex flex-col gap-4">
       <p className="text-sm text-slate-400">
-        {editable ? 'ゲーム設定（変更は全員に即時反映）' : 'ホストが設定中（読み取り専用）'}
+        {editable
+          ? controlsEnabled
+            ? 'ゲーム設定（変更は全員に即時反映）'
+            : 'サーバーに接続中です。接続が完了してから設定を変更できます。'
+          : 'ホストが設定中（読み取り専用）'}
       </p>
 
       <label className="flex flex-col gap-1 text-sm">
         <span className="text-slate-400">ルール</span>
         <select
-          disabled={!editable}
+          disabled={!controlsEnabled}
           value={config.rule_type}
           onChange={(e) => pushUpdate({ rule_type: e.target.value as RuleType })}
           className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-slate-100 disabled:opacity-60"
@@ -92,7 +100,7 @@ export function SettingsPanel({ config, editable, members }: SettingsPanelProps)
               <button
                 key={mode}
                 type="button"
-                disabled={!editable}
+                disabled={!controlsEnabled}
                 onClick={() => pushUpdate({ normal_end_mode: mode })}
                 className={`flex-1 rounded-lg border px-3 py-2 text-sm transition ${
                   config.normal_end_mode === mode
@@ -131,7 +139,9 @@ export function SettingsPanel({ config, editable, members }: SettingsPanelProps)
               </span>
               <button
                 type="button"
-                disabled={!editable || config.minority_finish_threshold >= minorityThresholdMax}
+                disabled={
+                  !controlsEnabled || config.minority_finish_threshold >= minorityThresholdMax
+                }
                 onClick={() =>
                   onSlider('minority_finish_threshold', config.minority_finish_threshold + 1, false)
                 }
@@ -148,7 +158,7 @@ export function SettingsPanel({ config, editable, members }: SettingsPanelProps)
                 <button
                   key={timing}
                   type="button"
-                  disabled={!editable}
+                  disabled={!controlsEnabled}
                   onClick={() => pushUpdate({ minority_finish_timing: timing })}
                   className={`flex-1 rounded-lg border px-3 py-2 text-sm transition ${
                     config.minority_finish_timing === timing
@@ -171,7 +181,7 @@ export function SettingsPanel({ config, editable, members }: SettingsPanelProps)
         <label className="flex flex-col gap-1 text-sm">
           <span className="text-slate-400">ボス（代表）</span>
           <select
-            disabled={!editable}
+            disabled={!controlsEnabled}
             value={config.boss_player_id ?? ''}
             onChange={(e) => pushUpdate({ boss_player_id: e.target.value ? e.target.value : null })}
             className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-slate-100 disabled:opacity-60"
@@ -194,7 +204,7 @@ export function SettingsPanel({ config, editable, members }: SettingsPanelProps)
         </span>
         <input
           type="range"
-          disabled={!editable}
+          disabled={!controlsEnabled}
           min={MATCH_CONFIG_LIMITS.round_time_limit_sec.min}
           max={MATCH_CONFIG_LIMITS.round_time_limit_sec.max}
           step={MATCH_CONFIG_LIMITS.round_time_limit_sec.step}
@@ -211,7 +221,7 @@ export function SettingsPanel({ config, editable, members }: SettingsPanelProps)
             <button
               key={mode}
               type="button"
-              disabled={!editable}
+              disabled={!controlsEnabled}
               onClick={() => pushUpdate({ round_advance_mode: mode })}
               className={`flex-1 rounded-lg border px-3 py-2 text-sm transition ${
                 config.round_advance_mode === mode
@@ -233,7 +243,7 @@ export function SettingsPanel({ config, editable, members }: SettingsPanelProps)
           </span>
           <input
             type="range"
-            disabled={!editable}
+            disabled={!controlsEnabled}
             min={MATCH_CONFIG_LIMITS.result_display_sec.min}
             max={MATCH_CONFIG_LIMITS.result_display_sec.max}
             step={MATCH_CONFIG_LIMITS.result_display_sec.step}

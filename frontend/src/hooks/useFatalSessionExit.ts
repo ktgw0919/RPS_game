@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 
 import { useGame } from '@/hooks/useGame';
 import { clearSession } from '@/lib/session';
+import { formatWsError } from '@/lib/wsErrorDisplay';
 import { FATAL_WS_ERROR_CODES } from '@/types';
 
 /** Leave room and return home on fatal WS errors or session replacement. */
@@ -20,13 +21,15 @@ export function useFatalSessionExit(): void {
     disconnect();
     reset();
     clearSession();
+    const message = replaced
+      ? '別の端末で接続されたため、このセッションは終了しました。'
+      : state.lastError
+        ? formatWsError(state.lastError)
+        : undefined;
+
     navigate('/', {
       replace: true,
-      state: {
-        message:
-          state.lastError?.message ??
-          (replaced ? '別の端末で接続されたため、このセッションは終了しました。' : undefined),
-      },
+      state: { message },
     });
   }, [state.connectionStatus, state.lastError, disconnect, reset, navigate]);
 }

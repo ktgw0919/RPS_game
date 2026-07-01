@@ -55,6 +55,7 @@ export type GameAction =
   | { type: 'ROUND_RESULT'; payload: RoundResultPayload }
   | { type: 'MATCH_END'; payload: MatchEndPayload }
   | { type: 'WS_ERROR'; payload: ErrorPayload }
+  | { type: 'CLEAR_ERROR' }
   | { type: 'CONNECTION_STATUS'; status: WsConnectionStatus }
   | { type: 'RESET' };
 
@@ -88,6 +89,9 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
 
     case 'WS_ERROR':
       return { ...state, lastError: action.payload };
+
+    case 'CLEAR_ERROR':
+      return state.lastError ? { ...state, lastError: null } : state;
 
     case 'STATE_SYNC': {
       const { room, members, you, match, server_now } = action.payload;
@@ -142,6 +146,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
         ...state,
         config: action.payload.config,
         room: state.room ? { ...state.room, config: action.payload.config } : null,
+        lastError: null,
       };
 
     case 'ROUND_START': {
