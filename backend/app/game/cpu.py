@@ -47,11 +47,32 @@ def pick_random_hand(
     strategy: CpuStrategy = CpuStrategy.RANDOM,
     uniform: UniformFn = random.uniform,
 ) -> Hand:
-    """Pick a hand for a CPU player (MVP: RANDOM only)."""
+    """Pick a random hand for a CPU player."""
     if strategy is not CpuStrategy.RANDOM:
-        raise ValueError(f"Unsupported CPU strategy: {strategy}")
+        raise ValueError(f"Unsupported random CPU strategy: {strategy}")
     idx = int(uniform(0, 3))
     return (Hand.ROCK, Hand.SCISSORS, Hand.PAPER)[idx % 3]
+
+
+def pick_cpu_hand(
+    player: Player,
+    *,
+    uniform: UniformFn = random.uniform,
+) -> Hand:
+    """Pick the next hand for a CPU player according to its strategy."""
+    strategy = player.cpu_strategy or CpuStrategy.RANDOM
+    if strategy is CpuStrategy.FIXED:
+        if not player.cpu_fixed_hands:
+            raise ValueError(f"CPU {player.player_id} has FIXED strategy but no fixed_hands")
+        idx = player.cpu_fixed_hand_index % len(player.cpu_fixed_hands)
+        return player.cpu_fixed_hands[idx]
+    return pick_random_hand(strategy=strategy, uniform=uniform)
+
+
+def advance_cpu_hand_index(player: Player) -> None:
+    """Advance scripted-hand cursor after a CPU submission (FIXED strategy only)."""
+    if player.cpu_strategy is CpuStrategy.FIXED and player.cpu_fixed_hands:
+        player.cpu_fixed_hand_index += 1
 
 
 def compute_submit_delay(

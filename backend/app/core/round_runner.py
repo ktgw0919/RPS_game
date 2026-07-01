@@ -35,7 +35,7 @@ from typing import Any
 from app.core.connection_manager import ConnectionManager
 from app.core.match_history import MatchHistoryRepository
 from app.core.state_store import GameStateStore
-from app.game.cpu import compute_submit_delay, pick_random_hand
+from app.game.cpu import advance_cpu_hand_index, compute_submit_delay, pick_cpu_hand
 from app.game.draw_resolution import (
     RoundProgression,
     resolve_after_boss_round,
@@ -56,7 +56,6 @@ from app.game.rules.tournament import (
     tournament_champion,
 )
 from app.models import (
-    CpuStrategy,
     ErrorCode,
     Hand,
     Match,
@@ -83,7 +82,7 @@ logger = logging.getLogger("rps.round")
 SleepFn = Callable[[float], Awaitable[None]]
 NowFn = Callable[[], datetime]
 UniformFn = Callable[[float, float], float]
-PickHandFn = Callable[[CpuStrategy], Hand]
+PickHandFn = Callable[[Player], Hand]
 
 # Timer/judge key: (uppercase room_code, segment_id). NORMAL -> segment_id None.
 _SegmentKey = tuple[str, str | None]
@@ -117,7 +116,7 @@ class RoundRunner:
         self._result_delay_sleep = result_delay_sleep
         self._cpu_delay_sleep = cpu_delay_sleep
         self._uniform = uniform
-        self._pick_hand = pick_hand or (lambda strategy: pick_random_hand(strategy=strategy))
+        self._pick_hand = pick_hand or pick_cpu_hand
         self._timers: dict[_SegmentKey, asyncio.Task[None]] = {}
         self._tasks: set[asyncio.Task[None]] = set()
 
@@ -613,8 +612,8 @@ class RoundRunner:
             player = self._store.get_player(room, pid)
             if player is None or not player.is_cpu:
                 continue
-            strategy = player.cpu_strategy or CpuStrategy.RANDOM
-            hand = self._pick_hand(strategy)
+            hand = self._pick_hand(player)
+            advance_cpu_hand_index(player)
             delay = compute_submit_delay(limit, uniform=self._uniform)
             self._spawn(
                 self._cpu_submit_after_delay(

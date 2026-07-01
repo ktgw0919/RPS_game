@@ -1,5 +1,7 @@
 import { useState } from 'react';
 
+import type { Hand } from '@/types';
+
 import { Divider, Panel, PrimaryButton } from '@/components/ui/Panel';
 import { MatchHistoryPanel } from '@/components/lobby/MatchHistoryPanel';
 import { MemberList } from '@/components/lobby/MemberList';
@@ -45,10 +47,20 @@ export function LobbyScreen() {
     eligible.length < minPlayersFor(config.rule_type) &&
     eligible.length >= 1;
 
-  const handleAddCpu = () => {
+  const handleAddRandomCpu = () => {
     setAddCpuBusy(true);
-    send('ADD_CPU', { count: 1 });
+    send('ADD_CPU', { count: 1, strategy: 'RANDOM' });
     window.setTimeout(() => setAddCpuBusy(false), 400);
+  };
+
+  const handleAddFixedCpu = (hands: Hand[]) => {
+    setAddCpuBusy(true);
+    send('ADD_CPU', { count: 1, strategy: 'FIXED', fixed_hands: hands });
+    window.setTimeout(() => setAddCpuBusy(false), 400);
+  };
+
+  const handleUpdateCpuHands = (playerId: string, hands: Hand[]) => {
+    send('UPDATE_CPU', { player_id: playerId, fixed_hands: hands });
   };
 
   const handleRemoveCpu = (playerId: string) => {
@@ -79,7 +91,9 @@ export function LobbyScreen() {
           hostPlayerId={room.host_player_id}
           cpuControlsEnabled={cpuControlsEnabled}
           roomFull={roomFull}
-          onAddCpu={handleAddCpu}
+          onAddRandomCpu={handleAddRandomCpu}
+          onAddFixedCpu={handleAddFixedCpu}
+          onUpdateCpuHands={handleUpdateCpuHands}
           onRemoveCpu={handleRemoveCpu}
           addCpuBusy={addCpuBusy}
         />
@@ -109,7 +123,7 @@ export function LobbyScreen() {
           ) : null}
           {needsCpuHint ? (
             <p className="text-center text-xs text-slate-500">
-              デモ用に「＋CPUを追加」すると1人でもゲームを開始できます
+              デモ用に「＋CPU（ランダム）」や手指定の CPU を追加すると1人でもゲームを開始できます
             </p>
           ) : null}
         </div>

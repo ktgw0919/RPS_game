@@ -43,6 +43,7 @@ from app.game.start_conditions import can_start, eligible_player_ids, min_player
 from app.models import (
     AddCpuPayload,
     ConnectionState,
+    CpuStrategy,
     ErrorCode,
     ErrorPayload,
     HostChangedPayload,
@@ -68,6 +69,7 @@ from app.models import (
     StateSyncPayload,
     SubmitHandPayload,
     TournamentPair,
+    UpdateCpuPayload,
     UpdateSettingsPayload,
     make_envelope,
 )
@@ -404,6 +406,8 @@ async def _dispatch(
         await _handle_add_cpu(websocket, manager, store, room, player, env)
     elif env.type == MessageType.REMOVE_CPU:
         await _handle_remove_cpu(websocket, manager, store, room, player, env)
+    elif env.type == MessageType.UPDATE_CPU:
+        await _handle_update_cpu(websocket, manager, store, room, player, env)
     elif env.type == MessageType.START_GAME:
         await _handle_start_game(websocket, manager, store, room, player, env)
     elif env.type == MessageType.SUBMIT_HAND:
@@ -511,6 +515,7 @@ async def _handle_add_cpu(
         else:
             now = utcnow()
             for _ in range(payload.count):
+                fixed_hands = list(payload.fixed_hands or [])
                 cpu = Player(
                     player_id=generate_player_id(),
                     token=None,
@@ -518,6 +523,8 @@ async def _handle_add_cpu(
                     connection_state=ConnectionState.CONNECTED,
                     is_cpu=True,
                     cpu_strategy=payload.strategy,
+                    cpu_fixed_hands=fixed_hands,
+                    cpu_fixed_hand_index=0,
                     joined_at=now,
                     joined_announced=True,
                 )
@@ -531,6 +538,59 @@ async def _handle_add_cpu(
     assert lobby_update is not None
     for cpu in added:
         await manager.broadcast(room.room_code, _player_joined(cpu))
+    await manager.broadcast(room.room_code, lobby_update)
+
+
+async def _handle_update_cpu(
+    websocket: WebSocket,
+    manager: ConnectionManager,
+    store: GameStateStore,
+    room: Room,
+    player: Player,
+    env: InboundEnvelope,
+) -> None:
+    """Set scripted hands for a lobby CPU (dev/debug). Connection stays open on error."""
+    settings: Settings = websocket.app.state.settings
+    if not settings.allow_cpu:
+        await manager.send(
+            websocket,
+            _error_envelope(ErrorCode.CPU_NOT_ALLOWED, "CPU players are disabled."),
+        )
+        return
+    if player.player_id != room.host_player_id:
+        await manager.send(
+            websocket, _error_envelope(ErrorCode.NOT_HOST, "Only the host can update CPUs.")
+        )
+        return
+    try:
+        payload = UpdateCpuPayload.model_validate(env.payload)
+    except ValidationError:
+        await manager.send(
+            websocket, _error_envelope(ErrorCode.INVALID_PAYLOAD, "Invalid UPDATE_CPU payload.")
+        )
+        return
+
+    lock = store.room_lock(room.room_code)
+    error: tuple[ErrorCode, str] | None = None
+    lobby_update: dict[str, Any] | None = None
+    async with lock:
+        if room.status is not RoomStatus.WAITING:
+            error = (ErrorCode.INVALID_STATE, "CPU players can only be updated in the lobby.")
+        else:
+            target = store.get_player(room, payload.player_id)
+            if target is None or not target.is_cpu:
+                error = (ErrorCode.INVALID_STATE, "Player is not a CPU.")
+            else:
+                target.cpu_strategy = CpuStrategy.FIXED
+                target.cpu_fixed_hands = list(payload.fixed_hands)
+                target.cpu_fixed_hand_index = 0
+                store.touch(room)
+                lobby_update = _lobby_update(room)
+
+    if error is not None:
+        await manager.send(websocket, _error_envelope(error[0], error[1]))
+        return
+    assert lobby_update is not None
     await manager.broadcast(room.room_code, lobby_update)
 
 
@@ -626,6 +686,9 @@ async def _handle_start_game(
                     match_id=generate_match_id(),
                     now=utcnow(),
                 )
+                for member in room.members.values():
+                    if member.is_cpu:
+                        member.cpu_fixed_hand_index = 0
                 lobby_update = _lobby_update(room)
 
     if error is not None:

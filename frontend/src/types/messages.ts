@@ -30,7 +30,8 @@ export type ClientMessageType =
   | 'RETURN_TO_LOBBY'
   | 'LEAVE'
   | 'ADD_CPU'
-  | 'REMOVE_CPU';
+  | 'REMOVE_CPU'
+  | 'UPDATE_CPU';
 
 export type ServerMessageType =
   | 'STATE_SYNC'
@@ -132,6 +133,12 @@ export type PongPayload = EmptyPayload;
 export interface AddCpuPayload {
   count?: number;
   strategy?: CpuStrategy;
+  fixed_hands?: Hand[];
+}
+
+export interface UpdateCpuPayload {
+  player_id: string;
+  fixed_hands: Hand[];
 }
 
 export interface RemoveCpuPayload {
@@ -165,6 +172,7 @@ export interface ClientPayloadMap {
   LEAVE: LeavePayload;
   ADD_CPU: AddCpuPayload;
   REMOVE_CPU: RemoveCpuPayload;
+  UPDATE_CPU: UpdateCpuPayload;
 }
 
 export interface ServerPayloadMap {
@@ -220,7 +228,8 @@ export function isClientMessageType(type: string): type is ClientMessageType {
     type === 'RETURN_TO_LOBBY' ||
     type === 'LEAVE' ||
     type === 'ADD_CPU' ||
-    type === 'REMOVE_CPU'
+    type === 'REMOVE_CPU' ||
+    type === 'UPDATE_CPU'
   );
 }
 

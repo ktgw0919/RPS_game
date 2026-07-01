@@ -25,7 +25,7 @@
 - [x] Step 10: `lifespan` 常駐タスクを実装する（確定値は `ARCHITECTURE.md` §10: 走査間隔60s・無操作30分・ホスト移譲猶予30s・ゴーストTTL120s）。①ルーム破棄スイープ（`ROOM_IDLE_TTL_SEC` 無操作で `CLOSED`＋`ROOM_CLOSED` 通知）②ホスト切断時の自動移譲（`HOST_TRANSFER_GRACE_SEC` 経過後、最古参の接続中プレイヤーへ＋`HOST_CHANGED`）③ハートビート欠落で `DISCONNECTED` 化＋WAITING の `GHOST_TTL_SEC` 超過ゴースト除去。終了時に全タスクを `cancel()` する
 - [x] Step 11: `ERROR` コードを front/back 共有の定数として実装する（`ARCHITECTURE.md` §4.1 の一覧を正とする）
 - [x] Step 12: テストを整備する（`ARCHITECTURE.md` §11）。①判定エンジン/各ルールの純粋関数テスト ②FSM 遷移の状態ストア単体テスト ③WebSocket 結合テスト（`pytest-asyncio` + Starlette テストクライアントで締切到達・早期確定・再接続復元・`SESSION_REPLACED`・二重判定防止）を CI で実行
-- [x] Step 13:（開発/デモ用 CPU）`ALLOW_CPU`（`.env`）を `Settings` に追加し、ホストの `ADD_CPU`/`REMOVE_CPU`（ロビーのみ・`ALLOW_CPU=false` は `CPU_NOT_ALLOWED`）で CPU プレイヤーを増減する。CPU はトークン/接続を持たないプレイヤーとして `Player`（`is_cpu`/`cpu_strategy`）に追加し、定員・開始最小人数にカウントする。`ROUND_START` 時に `game/cpu.py` で手を生成（MVP は `RANDOM`）し、締切前に短いランダム遅延で自動提出する。ホスト自動移譲・破棄スイープ・切断検知から CPU を除外する。CPU を含めたソロ進行を結合テストで検証する（`ARCHITECTURE.md` §3/§5/§6/§10）
+- [x] Step 13:（開発/デモ用 CPU）`ALLOW_CPU`（`.env`）を `Settings` に追加し、ホストの `ADD_CPU`/`REMOVE_CPU`（ロビーのみ・`ALLOW_CPU=false` は `CPU_NOT_ALLOWED`）で CPU プレイヤーを増減する。CPU はトークン/接続を持たないプレイヤーとして `Player`（`is_cpu`/`cpu_strategy`）に追加し、定員・開始最小人数にカウントする。`ROUND_START` 時に `game/cpu.py` で手を生成（既定 `RANDOM`）。ホスト自動移譲・破棄スイープ・切断検知から CPU を除外する。CPU を含めたソロ進行を結合テストで検証する（`ARCHITECTURE.md` §3/§5/§6/§10）。※手列指定（`FIXED` / `UPDATE_CPU`）は MVP 残タスクで追加済み
 
 ## Phase 3: Special Rules Implementation
 > **Step 1–4 完了時点**: `game/rules/*`（minority / boss_battle / tournament）と `game/draw_resolution.py` の**純粋ロジック＋単体テスト**まで。`RoundRunner` / `ws.py` のルール配線・フロント UI は下記「特殊ルール：ランタイム統合」へ。
@@ -69,7 +69,7 @@
 - [x] Step 2: `src/types` に WebSocket メッセージ型・ドメイン型（`PlayerView`/`RoomView`/`MatchView` 等）を定義し、Pydantic v2 モデル・封筒形式 `{type, payload, v}` と整合させる。`ErrorCode`（`SESSION_REPLACED` 含む）を front/back 共有定数として定義し、時刻は UTC ISO8601（ミリ秒・`Z`）、`segment_id` は任意フィールドとして型に含める
 - [x] Step 3: ロビー画面、ホスト設定画面、手札選択画面、結果発表画面のUIコンポーネント実装（`Layout`/`components` 構成を踏襲）。ホスト設定は `UPDATE_SETTINGS`/`SETTINGS_UPDATE` と連動し全員にライブ反映、手動進行時はホストに「次へ」操作を表示。観戦者は手の提出 UI を出さず結果を読み取り専用で表示する
 - [x] Step 4: 各種エッジケース（途中で通信が切れたプレイヤーの再接続復帰、未提出のタイムアウト、ホスト切断時の移譲）のバグフィックス。クライアントは `deadline_at` と `server_now` の差分で残り時間を表示する
-- [x] Step 5:（開発/デモ用 CPU）ロビーに「＋CPUを追加」ボタン（ホストのみ・`ALLOW_CPU` 有効時のみ・`ADD_CPU`/`REMOVE_CPU` と連動）と、参加者一覧の CPU バッジ（🤖）＋削除ボタンを実装する。`PlayerView.is_cpu` を `types` に追加し、ソロ＋CPU で「ゲーム開始」が活性化することを確認する（`SCREENS.md` §4/§5）
+- [x] Step 5:（開発/デモ用 CPU）ロビーに「＋CPU（ランダム）」・手指定追加（✊✌️✋）・参加者一覧の CPU バッジ（🤖）＋手列編集（`UPDATE_CPU`）＋削除ボタンを実装する。`PlayerView.is_cpu` / `cpu_strategy` / `cpu_fixed_hands` を `types` に追加し、ソロ＋CPU で「ゲーム開始」が活性化することを確認する（`SCREENS.md` §4/§5）
 
 ## Phase 5: Match History Read & UI
 > 書き込み（`match_history` 永続化）は完了済み。本フェーズでルーム単位の読み取り REST とロビー UI を追加する。グローバルスコアボードは対象外（アカウント連携後フェーズ）。
@@ -86,6 +86,8 @@
 - [x] **QR コード共有**（`SCREENS.md` §4.1）: 参加リンク（`/join/:code`）の QR をモーダル表示（`ShareQrModal` / `react-qr-code`）。コード・リンクのコピーは `SharePanel` に実装済み
 - [x] **ルーム操作 UI**（`SCREENS.md` §5）: `RoomActionsPanel`・`useExitRoom`・退室／別ルーム参加／新規作成（試合中は移動系非活性）。WS の `LEAVE` は実装済み
 
+- [x] **CPU 手指定（開発/デバッグ）**: `CpuStrategy.FIXED`・`ADD_CPU`（`strategy` + `fixed_hands`）・`UPDATE_CPU`（ロビーのみ）・`Player.cpu_fixed_hands` / `cpu_fixed_hand_index`・`game/cpu.py` の手列再生（尽きたら先頭から循環）。`START_GAME` でインデックスを 0 にリセット。フロントは `MemberList` / `CpuHandControls`（ランダム追加・単発手・手列の下書き適用）。`ARCHITECTURE.md` §4/§5/§6・`SCREENS.md` §4/§5
+
 > **今後の実装**は下記 **Phase 6 以降**を正とする。任意のフロント E2E は Phase 6 Step 3 へ移管。
 
 ---
@@ -99,6 +101,7 @@
 - [x] **Step 2 — ホスト操作のエラー・接続 UX**: 非致命 `ERROR`（例: `START_CONDITION_UNMET` / `INVALID_STATE`）を `SessionNotices` または開始ボタン付近に表示。WebSocket 未接続時は `UPDATE_SETTINGS` 等のホスト操作も無効化または警告（開始ボタンと同様のパターン）。`ROOM_CLOSED` 解散時のメッセージを明確化
 - [ ] **Step 3 — フロント E2E**（任意）: Playwright 等でスモークシナリオ（ルーム作成 → CPU 追加 → 開始 → 1 ラウンド、QR 表示、退室）。backend + frontend を起動する CI ジョブまたは nightly
 - [ ] **Step 4 — TOURNAMENT UI 仕上げ**（任意）: `SCREENS.md` §4.2 の「他ペア結果サマリー」。観戦・待機中プレイヤー向けに他 `segment_id` のラウンド結果を読み取り専用で表示
+- [ ] **Step 5 — ラウンドログ（バグ再発調査用）**: 判定直後にサーバーが `RoundLogEntry` を `Match.round_log` に追記し、マッチ終了時に `match_history` へ同梱して永続化。各ラウンドに `judging_rule`・`switched_to_normal_finish`・手（`player_id` + `display_name`）・勝敗・脱落を含める（WS `ROUND_RESULT` はクライアント用のまま変更不要）。任意で構造化 `logging`（`.env` フラグ）と `GET .../matches/{match_id}` 詳細。設計の正本は `ARCHITECTURE.md` §5.2
 
 ## Phase 7: 本番運用・デプロイ（任意）
 
@@ -120,6 +123,6 @@
 > アカウント・グローバル機能・ゲーム拡張。**着手時に `REQUIREMENTS.md` §6 と `ARCHITECTURE.md` を設計更新してから実装**する。
 
 - [ ] **アカウント連携**: 外部 ID と `playerId` の紐付け。`display_name` 横断のグローバルスコアボード（`REQUIREMENTS.md` / `ARCHITECTURE.md` §3.1 後フェーズ）
-- [ ] **CPU 戦略拡張**: `CpuStrategy` に mimic / 難易度（`ARCHITECTURE.md` §4 `CpuStrategy` 注記）
-- [ ] **履歴 API 強化**: `GET /rooms/{code}/matches` の在室者限定認可（トークン検証）。任意で `GET /rooms/{code}/matches/{match_id}` 単件詳細
+- [ ] **CPU 戦略拡張**: `CpuStrategy` に mimic / 難易度（`RANDOM` / `FIXED` 以外。`ARCHITECTURE.md` §4 `CpuStrategy` 注記）
+- [ ] **履歴 API 強化**: `GET /rooms/{code}/matches` の在室者限定認可（トークン検証）。ラウンドログ実装後は `GET /rooms/{code}/matches/{match_id}` で `rounds[]` 単件詳細（Phase 6 Step 5 と整合）
 - [ ] **WS レート制限**: トークンバケット型の濫用対策（`ARCHITECTURE.md` §11）。ルーム作成レート制限の強化と合わせて検討

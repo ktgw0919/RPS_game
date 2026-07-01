@@ -59,7 +59,9 @@ app/
   utils.py       # generic helpers (time formatting, room code)
   routers/       # rooms.py (REST), ws.py (WebSocket)
   core/          # constants, security, state_store, connection_manager, lifecycle, round_runner, match_history, rate_limit
-  game/          # engine, cpu, draw_resolution, start_conditions; rules/ (minority, boss_battle, tournament)
+  game/          # engine, cpu (RANDOM/FIXED), draw_resolution, start_conditions; rules/ (minority, boss_battle, tournament)
 ```
 
 **特殊ルール**: 判定は `game/rules/*` + `draw_resolution.py` まで完了。`RoundRunner` / `ws.py` への配線は `../docs/TODO.md` Step R0–R6 を参照。
+
+**CPU 手指定（開発/デバッグ）**: `CpuStrategy.FIXED`・WS `ADD_CPU`（`fixed_hands`）/ `UPDATE_CPU`。ラウンドログ方針は `../docs/ARCHITECTURE.md` §5.2。

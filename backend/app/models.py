@@ -19,7 +19,14 @@ from datetime import datetime
 from enum import StrEnum
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    field_serializer,
+    field_validator,
+    model_validator,
+)
 
 from app.core.constants import (
     DISPLAY_NAME_MAX_LEN,
@@ -40,8 +47,9 @@ class Hand(StrEnum):
 
 
 class CpuStrategy(StrEnum):
-    # MVP only supports RANDOM; the enum is a container for future strategies.
     RANDOM = "RANDOM"
+    # Development/debug: play a fixed sequence of hands (cycles when exhausted).
+    FIXED = "FIXED"
 
 
 class RuleType(StrEnum):
@@ -183,6 +191,8 @@ class Player(BaseModel):
     is_spectator: bool = False
     is_cpu: bool = False
     cpu_strategy: CpuStrategy | None = None
+    cpu_fixed_hands: list[Hand] = Field(default_factory=list)
+    cpu_fixed_hand_index: int = 0
     joined_at: datetime
     # Lifecycle bookkeeping (internal; never serialized to clients via PlayerView).
     # `last_seen_at`: last inbound frame, for heartbeat-miss detection (§10).
@@ -201,6 +211,8 @@ class Player(BaseModel):
             connection_state=(ConnectionState.CONNECTED if self.is_cpu else self.connection_state),
             is_spectator=self.is_spectator,
             is_cpu=self.is_cpu,
+            cpu_strategy=self.cpu_strategy if self.is_cpu else None,
+            cpu_fixed_hands=list(self.cpu_fixed_hands) if self.is_cpu else [],
         )
 
 
@@ -297,6 +309,8 @@ class PlayerView(BaseModel):
     connection_state: ConnectionState
     is_spectator: bool
     is_cpu: bool
+    cpu_strategy: CpuStrategy | None = None
+    cpu_fixed_hands: list[Hand] = Field(default_factory=list)
 
 
 class RoomView(BaseModel):
@@ -444,6 +458,7 @@ class MessageType(StrEnum):
     LEAVE = "LEAVE"
     ADD_CPU = "ADD_CPU"
     REMOVE_CPU = "REMOVE_CPU"
+    UPDATE_CPU = "UPDATE_CPU"
     # server -> client
     STATE_SYNC = "STATE_SYNC"
     LOBBY_UPDATE = "LOBBY_UPDATE"
@@ -621,6 +636,25 @@ class AddCpuPayload(BaseModel):
 
     count: int = Field(default=1, ge=1, le=ROOM_CAPACITY)
     strategy: CpuStrategy = CpuStrategy.RANDOM
+    fixed_hands: list[Hand] | None = None
+
+    @model_validator(mode="after")
+    def _validate_fixed_hands(self) -> AddCpuPayload:
+        if self.strategy is CpuStrategy.FIXED:
+            if not self.fixed_hands:
+                raise ValueError("fixed_hands is required when strategy is FIXED")
+        elif self.fixed_hands:
+            raise ValueError("fixed_hands is only allowed when strategy is FIXED")
+        return self
+
+
+class UpdateCpuPayload(BaseModel):
+    """`UPDATE_CPU` (host, lobby only): set scripted hands for a CPU (dev/debug)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    player_id: str
+    fixed_hands: list[Hand] = Field(min_length=1, max_length=50)
 
 
 class RemoveCpuPayload(BaseModel):

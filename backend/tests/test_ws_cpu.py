@@ -20,7 +20,7 @@ def _tune_cpu(client: TestClient, hand: Hand = Hand.SCISSORS) -> None:
     _tune(client)
     runner = client.app.state.round_runner  # type: ignore[attr-defined]
     runner._cpu_delay_sleep = _instant
-    runner._pick_hand = lambda _strategy: hand
+    runner._pick_hand = lambda _player: hand
 
 
 def test_solo_host_and_cpu_play_full_match(client: TestClient) -> None:
@@ -83,6 +83,37 @@ def test_add_cpu_when_full_returns_room_full(client: TestClient) -> None:
         _recv_until(ws, "STATE_SYNC")
         _add_cpu(ws)
         assert _recv_until(ws, "ERROR")["payload"]["code"] == "ROOM_FULL"
+
+
+def test_fixed_cpu_plays_scripted_hands(client: TestClient) -> None:
+    _tune(client)
+    runner = client.app.state.round_runner  # type: ignore[attr-defined]
+    runner._cpu_delay_sleep = _instant
+    created = client.post("/rooms", json={"display_name": "Host"}).json()
+    code = created["room_code"]
+    with client.websocket_connect(f"/ws/rooms/{code}") as ws:
+        ws.send_json(_join(created["player_token"]))
+        _recv_until(ws, "STATE_SYNC")
+        ws.send_json(
+            {
+                "type": "ADD_CPU",
+                "payload": {"count": 1, "strategy": "FIXED", "fixed_hands": ["SCISSORS", "PAPER"]},
+                "v": 1,
+            }
+        )
+        _recv_until(ws, "PLAYER_JOINED")
+        lobby = _recv_until(ws, "LOBBY_UPDATE")["payload"]
+        cpu = next(m for m in lobby["members"] if m["is_cpu"])
+        assert cpu["cpu_strategy"] == "FIXED"
+        assert cpu["cpu_fixed_hands"] == ["SCISSORS", "PAPER"]
+
+        ws.send_json({"type": "START_GAME", "payload": {}, "v": 1})
+        rn = _round_no(ws)
+        _submit(ws, rn, "ROCK")
+
+        result = _recv_until(ws, "ROUND_RESULT")["payload"]
+        assert result["winner_ids"] == [created["player_id"]]
+        assert cpu["player_id"] in result["eliminated_player_ids"]
 
 
 def test_remove_cpu_drops_last_cpu(client: TestClient) -> None:

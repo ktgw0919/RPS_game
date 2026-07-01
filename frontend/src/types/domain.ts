@@ -6,7 +6,7 @@
 
 // --- Enums / value types (string literal unions match Python StrEnum) -------
 export type Hand = 'ROCK' | 'SCISSORS' | 'PAPER';
-export type CpuStrategy = 'RANDOM';
+export type CpuStrategy = 'RANDOM' | 'FIXED';
 export type RuleType = 'NORMAL' | 'MINORITY' | 'BOSS' | 'TOURNAMENT';
 export type NormalEndMode = 'ELIMINATION' | 'SINGLE_ROUND';
 export type RoundAdvanceMode = 'AUTO' | 'MANUAL';
@@ -53,6 +53,10 @@ export interface PlayerView {
   connection_state: ConnectionState;
   is_spectator: boolean;
   is_cpu: boolean;
+  /** Present when `is_cpu`; omitted on older snapshots defaults to RANDOM. */
+  cpu_strategy?: CpuStrategy | null;
+  /** Scripted hands when `cpu_strategy` is FIXED (dev/debug). */
+  cpu_fixed_hands?: Hand[];
 }
 
 export interface RoomView {
