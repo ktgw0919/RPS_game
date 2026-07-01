@@ -36,8 +36,13 @@ from app.core.connection_manager import ConnectionManager
 from app.core.match_history import MatchHistoryRepository
 from app.core.state_store import GameStateStore
 from app.game.cpu import compute_submit_delay, pick_random_hand
-from app.game.draw_resolution import resolve_after_normal_round
+from app.game.draw_resolution import (
+    RoundProgression,
+    resolve_after_minority_round,
+    resolve_after_normal_round,
+)
 from app.game.engine import RoundOutcome, judge_normal_round
+from app.game.rules.minority import effective_judging_rule, judge_minority_round
 from app.models import (
     CpuStrategy,
     ErrorCode,
@@ -283,16 +288,14 @@ class RoundRunner:
 
             now = self._now()
             self._store.set_match_state(match, MatchState.JUDGING)
-            outcome = judge_normal_round(match.alive_player_ids, rnd.submissions)
+            outcome, progression = self._judge_and_progress(match, rnd)
             self._store.mark_round_judged(match, now=now)
 
             config = match.config
             advance_mode = config.round_advance_mode
             result_display_sec = config.result_display_sec
 
-            progression = resolve_after_normal_round(
-                outcome, match.alive_player_ids, match.draw_round_count, config
-            )
+            self._apply_progression_flags(match, progression)
             match.draw_round_count = progression.draw_round_count
             eliminated = list(progression.eliminated_player_ids)
             new_alive = list(progression.alive_player_ids)
@@ -320,6 +323,40 @@ class RoundRunner:
             await self._result_delay_sleep(result_display_sec)
             await self._start_round(room, segment_id)
         # MANUAL: wait for the host's NEXT_ROUND (handled in `next_round`).
+
+    def _judging_rule(self, match: Match) -> RuleType:
+        """Rule used to judge the current round (§8)."""
+        if match.rule_type is RuleType.MINORITY:
+            return effective_judging_rule(
+                match.rule_type, switched_to_normal_finish=match.switched_to_normal_finish
+            )
+        return RuleType.NORMAL
+
+    def _judge_and_progress(
+        self, match: Match, rnd: Round
+    ) -> tuple[RoundOutcome, RoundProgression]:
+        alive = match.alive_player_ids
+        subs = rnd.submissions
+        config = match.config
+        if self._judging_rule(match) is RuleType.MINORITY:
+            outcome = judge_minority_round(alive, subs)
+            progression = resolve_after_minority_round(
+                outcome,
+                alive,
+                match.draw_round_count,
+                config,
+                switched_to_normal_finish=match.switched_to_normal_finish,
+            )
+        else:
+            outcome = judge_normal_round(alive, subs)
+            progression = resolve_after_normal_round(outcome, alive, match.draw_round_count, config)
+        return outcome, progression
+
+    def _apply_progression_flags(self, match: Match, progression: RoundProgression) -> None:
+        if progression.switched_to_normal_finish and not match.switched_to_normal_finish:
+            self._store.set_switched_to_normal_finish(match)
+        if progression.minority_defer_normal_next_match:
+            self._store.set_minority_defer_normal_next_match(match)
 
     # ------------------------------------------------------------ scheduling
     def _spawn(self, coro: Awaitable[None]) -> None:
