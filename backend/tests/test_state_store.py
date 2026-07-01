@@ -20,6 +20,7 @@ from app.models import (
     MatchState,
     Player,
     RoomStatus,
+    RuleType,
 )
 
 NOW = datetime(2026, 1, 1, 12, 0, 0, tzinfo=UTC)
@@ -221,6 +222,80 @@ def test_oldest_connected_human_excludes_cpu() -> None:
     for pid in ("h", "p2"):
         store.set_connection_state(room, pid, ConnectionState.DISCONNECTED, now=NOW)
     assert store.oldest_connected_human_id(room) is None
+
+
+# --------------------------------------------------------------------------
+# Step R0: special-rule match fields and segment/score store API
+# --------------------------------------------------------------------------
+def test_start_match_normal_initializes_special_rule_defaults() -> None:
+    store, room = _store_with_two()
+    match = _started_match(store, room)
+    assert match.switched_to_normal_finish is False
+    assert match.tournament_bracket_round == 0
+    assert match.tournament_active_pairs == []
+    assert match.tournament_segment_rounds == {}
+    assert match.boss_player_id is None
+
+
+def test_start_match_boss_copies_boss_player_id() -> None:
+    store, room = _store_with_two()
+    store.set_config(room, MatchConfig(rule_type=RuleType.BOSS, boss_player_id="h"))
+    match = store.start_match(
+        room, alive_player_ids=["h", "p2"], config=room.config, match_id="m-boss", now=NOW
+    )
+    assert match.rule_type is RuleType.BOSS
+    assert match.boss_player_id == "h"
+
+
+def test_start_match_tournament_builds_active_pairs() -> None:
+    store, room = _store_with_two()
+    store.add_player(room, _player("p3"))
+    store.set_config(room, MatchConfig(rule_type=RuleType.TOURNAMENT))
+    match = store.start_match(
+        room,
+        alive_player_ids=["h", "p2", "p3"],
+        config=room.config,
+        match_id="m-t",
+        now=NOW,
+    )
+    assert match.tournament_bracket_round == 0
+    assert [p.segment_id for p in match.tournament_active_pairs] == ["r0-p0", "r0-p1"]
+    assert match.tournament_active_pairs[0].players == ("h", "p2")
+    assert match.tournament_active_pairs[1].players == ("p3",)
+
+
+def test_begin_segment_round_and_submissions() -> None:
+    store, room = _store_with_two()
+    store.set_config(room, MatchConfig(rule_type=RuleType.TOURNAMENT))
+    match = store.start_match(
+        room, alive_player_ids=["h", "p2"], config=room.config, match_id="m-seg", now=NOW
+    )
+    deadline = datetime(2026, 1, 1, 12, 0, 10, tzinfo=UTC)
+    rnd = store.begin_segment_round(match, "r0-p0", round_no=1, deadline_at=deadline)
+    assert match.current_round_no == 1
+    assert match.tournament_segment_rounds["r0-p0"] is rnd
+    store.save_segment_submission(match, "r0-p0", "h", Hand.ROCK)
+    store.save_segment_submission(match, "r0-p0", "p2", Hand.PAPER)
+    assert rnd.submissions == {"h": Hand.ROCK, "p2": Hand.PAPER}
+    store.mark_segment_judged(match, "r0-p0", now=NOW)
+    assert rnd.judged_at == NOW
+
+
+def test_apply_score_deltas_accumulates() -> None:
+    store, room = _store_with_two()
+    match = _started_match(store, room)
+    store.apply_score_deltas(match, [("h", 1), ("p2", 2)])
+    store.apply_score_deltas(match, [("h", 1)])
+    assert match.scores == {"h": 2, "p2": 2}
+
+
+def test_set_switched_to_normal_finish() -> None:
+    store, room = _store_with_two()
+    match = _started_match(store, room)
+    store.set_switched_to_normal_finish(match)
+    assert match.switched_to_normal_finish is True
+    store.set_switched_to_normal_finish(match, value=False)
+    assert match.switched_to_normal_finish is False
 
 
 def test_disconnect_stamps_disconnected_at() -> None:

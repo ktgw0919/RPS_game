@@ -213,6 +213,15 @@ class Round(BaseModel):
     judged_at: datetime | None = None
 
 
+class TournamentPair(BaseModel):
+    """One bracket slot: 1v1 match or bye (ARCHITECTURE.md §5 / §8)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    segment_id: str
+    players: tuple[str, ...]
+
+
 class Match(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -225,11 +234,17 @@ class Match(BaseModel):
     participant_player_ids: list[str] = Field(default_factory=list)
     scores: dict[str, int] = Field(default_factory=dict)
     current_round_no: int = 0
-    # Live round being collected/judged (internal; not part of MatchView).
+    # Live round being collected/judged (NORMAL / MINORITY / BOSS; not TOURNAMENT).
     current_round: Round | None = None
     # Count of draws (same-member replays) so far; gates max_draw_rounds (§9).
     draw_round_count: int = 0
     boss_player_id: str | None = None
+    # MINORITY: threshold reached -> NORMAL judging for remainder of match (§8).
+    switched_to_normal_finish: bool = False
+    # TOURNAMENT: bracket stage and per-segment rounds (§5 / §7.1).
+    tournament_bracket_round: int = 0
+    tournament_active_pairs: list[TournamentPair] = Field(default_factory=list)
+    tournament_segment_rounds: dict[str, Round] = Field(default_factory=dict)
     winner_ids: list[str] = Field(default_factory=list)
     started_at: datetime | None = None
     ended_at: datetime | None = None

@@ -204,13 +204,13 @@
 
 - **Room**: ロビー単位。`room_code`(一意), `host_player_id`, `status`(WAITING / IN_GAME / CLOSED), `members[]`, `config`(次の Match に使う `MatchConfig`), `created_at`, `last_active_at`
 - **Player**: `player_id`, `token`(検証用。CPU は `null`), `display_name`(CPU は `CPU-1` 等の自動採番), `connection_state`(CONNECTED / DISCONNECTED。CPU は常に CONNECTED), `joined_at`, `is_cpu`(bool), `cpu_strategy`(`CpuStrategy` / 人間は `null`)
-- **Match**: 1ゲーム。`match_id`, `rule_type`(NORMAL / MINORITY / BOSS / TOURNAMENT), `state`(§6), `config`(`MatchConfig`), `alive_player_ids[]`, `scores{player_id:int}`, `current_round_no`, `boss_player_id`(BOSS用), `bracket`(TOURNAMENT用), `winner_ids[]`, `started_at`, `ended_at`
-  - **ランタイム統合時の追加フィールド**（`TODO.md` Step R0。現行 `models.py` には未実装）:
+- **Match**: 1ゲーム。`match_id`, `rule_type`(NORMAL / MINORITY / BOSS / TOURNAMENT), `state`(§6), `config`(`MatchConfig`), `alive_player_ids[]`, `scores{player_id:int}`, `current_round_no`, `boss_player_id`(BOSS用), `winner_ids[]`, `started_at`, `ended_at`
+  - **特殊ルール用フィールド**（`models.py` / Step R0 実装済み）:
     - `switched_to_normal_finish: bool` — MINORITY が閾値到達後 NORMAL 判定へ移行済みか
     - `tournament_bracket_round: int` — 現在のブラケット段（0 始まり）
-    - `tournament_active_pairs` — 当該段のアクティブペア一覧（`game/rules/tournament.TournamentPair` 相当）
-    - `tournament_segment_rounds: Record<segment_id, Round>` — TOURNAMENT の区画別提出・締切（NORMAL / MINORITY / BOSS は `current_round` 1本のまま）
-  - **`boss_player_id`**: フィールドは存在するが、`START_GAME` 時に `config.boss_player_id` をコピーする処理はランタイム統合（R1）で追加する
+    - `tournament_active_pairs: TournamentPair[]` — 当該段のアクティブペア一覧
+    - `tournament_segment_rounds: Record<segment_id, Round>` — TOURNAMENT の区画別提出・締切（NORMAL / MINORITY / BOSS は `current_round` 1本）
+  - **`boss_player_id`**: `start_match` 時に `init_match_for_rule` が BOSS なら `config.boss_player_id` をコピー（`ws.py` は R1 で `can_start` 再検証を追加）
 - **Round**: Match 内の1回のじゃんけん（あいこ再戦で複数発生）。`round_no`, `deadline_at`(サーバー時刻が権威), `submissions{player_id: Hand}`, `result`, `judged_at`
   - **`round_no` の採番規則**: Match 開始時を `1` とし、以降は**あいこ再戦・脱落再戦を問わず新しいラウンドを開始するたびに +1 する単調増加**の整数（マッチをまたいでリセット）。`max_draw_rounds` のカウントは `round_no` とは別管理で「あいこ（同メンバー再戦）」のみを数える（脱落でメンバーが変わる再戦は数えない。§8）。`SUBMIT_HAND` / ラウンド系メッセージの `round_no` はこの値を用い、サーバーは**現在ラウンドと一致しない `round_no` の `SUBMIT_HAND` を `INVALID_STATE` で破棄**する（再接続時の遅延提出・stale 提出の混入を防ぐ）。TOURNAMENT で並行ペアがある場合の採番は §7.1 を参照（`(round_no, segment_id)` で一意）。
 - **Hand（列挙）**: `ROCK` / `SCISSORS` / `PAPER`
