@@ -219,18 +219,16 @@
   - インデックス: `room_code` + `ended_at`（降順）でルーム内の履歴を新しい順に取得する。`match_id` にユニークインデックス（二重書き込み防止）。`player_id` は当該ルームの一時 ID であり、ルームをまたいだ同一人物の追跡は MVP では行わない。
   - **読み取り（Phase 5）**: `GET /rooms/{code}/matches`（§3.1）が MongoDB から一覧を返す。**インメモリのルーム状態とは独立**。ラウンド単位のリプレイ・グローバルスコアボード集計は対象外。
 
-### 5.1 特殊ルールのランタイム統合（実装指針）
+### 5.1 特殊ルールのランタイム統合（完了）
 
-判定アルゴリズム（`game/rules/*`・`game/draw_resolution.py`）は Phase 3 Step 1–4 で完了。**オンライン配線**は `core/round_runner.py` と `routers/ws.py` が NORMAL のみ。進捗・タスク分解は `TODO.md`「特殊ルール：ランタイム統合」（Step R0–R6）を正とする。
+判定アルゴリズム（`game/rules/*`・`game/draw_resolution.py`）は Phase 3 Step 1–4 で完了。**オンライン配線**（`core/round_runner.py`・`routers/ws.py`・フロント UI）は Step R0–R6 で完了。進捗の正本は `TODO.md`「特殊ルール：ランタイム統合」。
 
-| 層 | NORMAL（現状） | 統合後の責務 |
-|---|---|---|
-| `ws.py` `START_GAME` | `can_start()` + `init_match_for_rule`（R0/R1 実装済み） | ルール別 match 初期化 |
-| `ws.py` `SUBMIT_HAND` | `segment_id` 無視 | runner へ `segment_id` 中継（TOURNAMENT 必須） |
-| `RoundRunner` | `judge_normal_round` のみ | `rule_type`（＋ MINORITY の移行フラグ）で `judge_*` / `resolve_after_*` をディスパッチ（**R0–R6 完了**） |
-| タイマー | `(room, null)` 1本 | TOURNAMENT はアクティブペアごとに `(room, segment_id)` 並行 |
-
-**実装順（推奨）**: MINORITY（単一区画・NORMAL と同型）→ BOSS（scores・ボス手）→ TOURNAMENT（区画別ラウンド・ステージバリア）。
+| 層 | 責務（現状） |
+|---|---|
+| `ws.py` `START_GAME` | `can_start()` + `init_match_for_rule` でルール別 match 初期化 |
+| `ws.py` `SUBMIT_HAND` | `segment_id` を runner へ中継（TOURNAMENT は必須・ペア所属検証） |
+| `RoundRunner` | `rule_type`（＋ MINORITY の移行フラグ）で `judge_*` / `resolve_after_*` をディスパッチ |
+| タイマー | NORMAL / MINORITY / BOSS は `(room, null)` 1本。TOURNAMENT はアクティブペアごとに `(room, segment_id)` 並行 |
 
 ## 6. ゲーム状態遷移 (FSM)
 - **Room.status**: `WAITING ⇄ IN_GAME`、最終的に `CLOSED`
@@ -302,7 +300,7 @@
 
 | 項目 | 型 / 選択肢 | 範囲 | 既定 | 有効条件 |
 |---|---|---|---|---|
-| `rule_type` | NORMAL / MINORITY / BOSS / TOURNAMENT | — | NORMAL | 常時。**オンライン対戦は NORMAL のみ**（特殊ルールはアルゴリズム実装済み・`RoundRunner` 統合後に有効化。`TODO.md` R0–R6） |
+| `rule_type` | NORMAL / MINORITY / BOSS / TOURNAMENT | — | NORMAL | 常時（全ルールをオンライン対戦で選択可能。`SCREENS.md` §4.2） |
 | `normal_end_mode` | ELIMINATION / SINGLE_ROUND | — | ELIMINATION | `rule_type=NORMAL`（§8） |
 | `round_time_limit_sec` | int（秒） | 5〜60（5刻み） | 10 | 常時 |
 | `round_advance_mode` | AUTO / MANUAL | — | AUTO | 常時（`ROUND_RESULT` からの進行） |
@@ -312,7 +310,7 @@
 | `minority_finish_timing` | 即時 / 次マッチから | — | 即時 | `rule_type=MINORITY` |
 | `boss_player_id` | player_id | 参加者一覧 | 未選択(null) | `rule_type=BOSS`（ホスト指名） |
 
-> **器とアルゴリズム**: `Match` / `MatchConfig` / `scores` / ルール別設定項目は用意済み。判定は `game/rules/*` + `draw_resolution.py` まで完了。**ランタイム統合**（`RoundRunner` / `ws.py` / フロント UI）は `TODO.md`「特殊ルール：ランタイム統合」を参照。
+> **器とアルゴリズム**: `Match` / `MatchConfig` / `scores` / ルール別設定項目と判定（`game/rules/*` + `draw_resolution.py`）・ランタイム統合（`RoundRunner` / `ws.py` / フロント UI）は完了（`TODO.md` R0–R6）。
 
 ## 10. バックグラウンドタスク・ライフサイクル
 ゲーム進行とは別に、`lifespan` で起動する常駐タスクで以下を扱う（単一ワーカー前提。複数ワーカー化時は Redis 実装側へ移す）。
