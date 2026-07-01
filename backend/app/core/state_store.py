@@ -360,6 +360,8 @@ class InMemoryGameStateStore(GameStateStore):
         match.tournament_bracket_round = 0
         match.tournament_active_pairs = []
         match.tournament_segment_rounds = {}
+        match.tournament_segment_draw_counts = {}
+        match.tournament_segment_winners = {}
         match.boss_player_id = None
 
         if config.rule_type is RuleType.BOSS:
@@ -370,6 +372,9 @@ class InMemoryGameStateStore(GameStateStore):
                 TournamentPair(segment_id=pair.segment_id, players=pair.players)
                 for pair in bracket.first_round
             ]
+            for pair in match.tournament_active_pairs:
+                if len(pair.players) == 1:
+                    match.tournament_segment_winners[pair.segment_id] = pair.players[0]
 
     def begin_segment_round(
         self,

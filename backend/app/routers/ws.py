@@ -109,8 +109,16 @@ def _match_view(room: Room, viewer_id: str) -> MatchView | None:
     match = room.match
     deadline_at = None
     my_submitted = False
-    if match.current_round is not None:
-        # Reconnecting clients derive remaining time from deadline_at/server_now.
+    segment_id: str | None = None
+    if match.rule_type is RuleType.TOURNAMENT:
+        pair = _pair_for_player(match.tournament_active_pairs, viewer_id)
+        if pair is not None and len(pair.players) > 1:
+            segment_id = pair.segment_id
+            rnd = match.tournament_segment_rounds.get(segment_id)
+            if rnd is not None:
+                deadline_at = rnd.deadline_at
+                my_submitted = viewer_id in rnd.submissions
+    elif match.current_round is not None:
         deadline_at = match.current_round.deadline_at
         my_submitted = viewer_id in match.current_round.submissions
     return MatchView(
@@ -123,6 +131,7 @@ def _match_view(room: Room, viewer_id: str) -> MatchView | None:
         deadline_at=deadline_at,
         my_submitted=my_submitted,
         boss_player_id=match.boss_player_id,
+        segment_id=segment_id,
     )
 
 

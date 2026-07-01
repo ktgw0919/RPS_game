@@ -247,6 +247,9 @@ class Match(BaseModel):
     tournament_bracket_round: int = 0
     tournament_active_pairs: list[TournamentPair] = Field(default_factory=list)
     tournament_segment_rounds: dict[str, Round] = Field(default_factory=dict)
+    # Per-segment draw replay counts and stage winners (§7.1 / §8).
+    tournament_segment_draw_counts: dict[str, int] = Field(default_factory=dict)
+    tournament_segment_winners: dict[str, str] = Field(default_factory=dict)
     winner_ids: list[str] = Field(default_factory=list)
     started_at: datetime | None = None
     ended_at: datetime | None = None
@@ -319,6 +322,7 @@ class MatchView(BaseModel):
     deadline_at: datetime | None = None
     my_submitted: bool = False
     boss_player_id: str | None = None
+    segment_id: str | None = None
 
     @field_serializer("deadline_at")
     def _ser_deadline_at(self, value: datetime | None) -> str | None:
