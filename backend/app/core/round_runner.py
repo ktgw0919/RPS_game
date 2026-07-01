@@ -36,6 +36,7 @@ from app.core.connection_manager import ConnectionManager
 from app.core.match_history import MatchHistoryRepository
 from app.core.state_store import GameStateStore
 from app.game.cpu import compute_submit_delay, pick_random_hand
+from app.game.draw_resolution import resolve_after_normal_round
 from app.game.engine import RoundOutcome, judge_normal_round
 from app.models import (
     CpuStrategy,
@@ -46,7 +47,6 @@ from app.models import (
     MatchEndReason,
     MatchState,
     MessageType,
-    NormalEndMode,
     Player,
     Room,
     RoomStatus,
@@ -278,25 +278,15 @@ class RoundRunner:
             advance_mode = config.round_advance_mode
             result_display_sec = config.result_display_sec
 
-            reason: MatchEndReason | None = None
-            winners_final: list[str] = []
-            if outcome.is_draw:
-                eliminated: list[str] = []
-                new_alive = list(match.alive_player_ids)
-                if self._store.increment_draw_count(match) >= config.max_draw_rounds:
-                    ended = True
-                    reason = MatchEndReason.DRAW_MAX_ROUNDS
-            else:
-                eliminated = list(outcome.eliminated_ids)
-                new_alive = list(outcome.winner_ids)
-                if config.normal_end_mode is NormalEndMode.SINGLE_ROUND:
-                    ended = True
-                    reason = MatchEndReason.DECIDED
-                    winners_final = list(outcome.winner_ids)
-                elif len(new_alive) <= 1:  # ELIMINATION: one survivor left
-                    ended = True
-                    reason = MatchEndReason.DECIDED
-                    winners_final = list(new_alive)
+            progression = resolve_after_normal_round(
+                outcome, match.alive_player_ids, match.draw_round_count, config
+            )
+            match.draw_round_count = progression.draw_round_count
+            eliminated = list(progression.eliminated_player_ids)
+            new_alive = list(progression.alive_player_ids)
+            ended = progression.match_ended
+            reason = progression.match_end_reason
+            winners_final = list(progression.match_winner_ids)
 
             self._store.set_alive(match, new_alive)
             self._store.set_match_state(match, MatchState.ROUND_RESULT)
