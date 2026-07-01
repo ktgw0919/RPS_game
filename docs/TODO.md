@@ -28,7 +28,7 @@
 - [x] Step 13:（開発/デモ用 CPU）`ALLOW_CPU`（`.env`）を `Settings` に追加し、ホストの `ADD_CPU`/`REMOVE_CPU`（ロビーのみ・`ALLOW_CPU=false` は `CPU_NOT_ALLOWED`）で CPU プレイヤーを増減する。CPU はトークン/接続を持たないプレイヤーとして `Player`（`is_cpu`/`cpu_strategy`）に追加し、定員・開始最小人数にカウントする。`ROUND_START` 時に `game/cpu.py` で手を生成（MVP は `RANDOM`）し、締切前に短いランダム遅延で自動提出する。ホスト自動移譲・破棄スイープ・切断検知から CPU を除外する。CPU を含めたソロ進行を結合テストで検証する（`ARCHITECTURE.md` §3/§5/§6/§10）
 
 ## Phase 3: Special Rules Implementation
-- [ ] Step 1: 「少数派勝利ルール (Minority Rule)」の集計・判定アルゴリズムの実装とテスト（`game/rules/minority.py`）。生存者が閾値以下で NORMAL 決着へ移行（閾値・タイミングは `MatchConfig`）
+- [x] Step 1: 「少数派勝利ルール (Minority Rule)」の集計・判定アルゴリズムの実装とテスト（`game/rules/minority.py`）。生存者が閾値以下で NORMAL 決着へ移行（閾値・タイミングは `MatchConfig`）
 - [ ] Step 2: 「代表ルール (Boss Battle)」の非対称ゲームロジックの実装（`game/rules/boss_battle.py`）。ボスはホスト指名・非参加者（勝者カウント対象外）
 - [ ] Step 3: 「1対1トーナメント」の自動進行（ブラケット生成・奇数は bye・ペアごとの独立判定・ペア内あいこ再戦）の実装（`game/rules/tournament.py`）。並行するペアはラウンド系メッセージの `segment_id`（`ARCHITECTURE.md` §4）で識別する
 - [ ] Step 4: 各ルールの「あいこ」再戦フローと `MatchConfig.max_draw_rounds`（あいこ回数の上限到達時は引き分け終了）の厳密化。各ルールをユニットテストで検証
@@ -52,6 +52,6 @@
 設計上は MVP 要件だが、上記フェーズの Step には含まれていない、または UI のみ未着手の項目。
 
 - [x] **`match_history` 永続化**（`ARCHITECTURE.md` §6）: マッチ終了時に MongoDB へ確定結果を保存（`core/match_history.py`）
-- [ ] **QR コード共有**（`SCREENS.md` §4.1.1）: 参加リンク（`/join/:code`）の QR をモーダル表示（`ShareQrModal` / `react-qr-code`）。コード・リンクのコピーは `SharePanel` に実装済み
-- [ ] **ルーム操作 UI**（`SCREENS.md` §4.7）: `RoomActionsPanel`・`useExitRoom`・退室／別ルーム参加／新規作成（試合中は移動系非活性）
+- [x] **QR コード共有**（`SCREENS.md` §4.1.1）: 参加リンク（`/join/:code`）の QR をモーダル表示（`ShareQrModal` / `react-qr-code`）。コード・リンクのコピーは `SharePanel` に実装済み
+- [x] **ルーム操作 UI**（`SCREENS.md` §4.7）: `RoomActionsPanel`・`useExitRoom`・退室／別ルーム参加／新規作成（試合中は移動系非活性）
 - [ ] **フロント E2E テスト**（任意）: Playwright 等でのブラウザ結合テスト
