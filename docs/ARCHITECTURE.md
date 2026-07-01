@@ -225,7 +225,7 @@
 
 | 層 | NORMAL（現状） | 統合後の責務 |
 |---|---|---|
-| `ws.py` `START_GAME` | `min_players_for` | `can_start()` + ルール別 match 初期化 |
+| `ws.py` `START_GAME` | `can_start()` + `init_match_for_rule`（R0/R1 実装済み） | ルール別 match 初期化 |
 | `ws.py` `SUBMIT_HAND` | `segment_id` 無視 | runner へ `segment_id` 中継（TOURNAMENT 必須） |
 | `RoundRunner` | `judge_normal_round` のみ | `rule_type`（＋ MINORITY の移行フラグ）で `judge_*` / `resolve_after_*` をディスパッチ |
 | タイマー | `(room, null)` 1本 | TOURNAMENT はアクティブペアごとに `(room, segment_id)` 並行 |

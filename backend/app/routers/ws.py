@@ -39,7 +39,7 @@ from app.core.round_runner import RoundRunner
 from app.core.security import generate_player_id
 from app.core.state_store import GameStateStore
 from app.game.cpu import last_cpu_player_id, next_cpu_display_name
-from app.game.start_conditions import eligible_player_ids, min_players_for
+from app.game.start_conditions import can_start, eligible_player_ids, min_players_for
 from app.models import (
     AddCpuPayload,
     ConnectionState,
@@ -62,10 +62,12 @@ from app.models import (
     ReturnToLobbyPayload,
     Room,
     RoomStatus,
+    RuleType,
     SettingsUpdatePayload,
     StartGamePayload,
     StateSyncPayload,
     SubmitHandPayload,
+    TournamentPair,
     UpdateSettingsPayload,
     make_envelope,
 )
@@ -147,6 +149,56 @@ def _lobby_update(room: Room) -> dict[str, Any]:
 def _settings_update(room: Room) -> dict[str, Any]:
     payload = SettingsUpdatePayload(config=room.config)
     return _envelope(MessageType.SETTINGS_UPDATE, payload.model_dump(mode="json"))
+
+
+def _start_condition_message(room: Room) -> str:
+    """Human-readable START_GAME rejection (§4.2)."""
+    if room.config.rule_type is RuleType.BOSS:
+        if not room.config.boss_player_id:
+            return "Select a boss before starting."
+        eligible = set(eligible_player_ids(room))
+        if room.config.boss_player_id not in eligible:
+            return "The nominated boss is not available."
+    if len(eligible_player_ids(room)) < min_players_for(room.config.rule_type):
+        return "Not enough players to start."
+    return "Start conditions are not met."
+
+
+def _pair_for_player(pairs: list[TournamentPair], player_id: str) -> TournamentPair | None:
+    for pair in pairs:
+        if player_id in pair.players:
+            return pair
+    return None
+
+
+def _validate_submit_segment(
+    room: Room, player_id: str, segment_id: str | None
+) -> ErrorCode | None:
+    """Validate SUBMIT_HAND segment_id for the active rule (§4 / TODO R1)."""
+    match = room.match
+    if match is None or room.status is not RoomStatus.IN_GAME:
+        return ErrorCode.INVALID_STATE
+    if match.rule_type is RuleType.TOURNAMENT:
+        if segment_id is None:
+            return ErrorCode.INVALID_STATE
+        pair = _pair_for_player(match.tournament_active_pairs, player_id)
+        if pair is None or pair.segment_id != segment_id:
+            return ErrorCode.INVALID_STATE
+    elif segment_id is not None:
+        return ErrorCode.INVALID_STATE
+    return None
+
+
+def _clear_boss_nomination_if_needed(
+    store: GameStateStore, room: Room, departed_player_id: str
+) -> dict[str, Any] | None:
+    """Reset boss_player_id when the nominee leaves the lobby (§8)."""
+    if room.config.rule_type is not RuleType.BOSS:
+        return None
+    if room.config.boss_player_id != departed_player_id:
+        return None
+    store.set_config(room, room.config.model_copy(update={"boss_player_id": None}))
+    return _settings_update(room)
 
 
 def _player_joined(player: Player) -> dict[str, Any]:
@@ -551,14 +603,13 @@ async def _handle_start_game(
         if room.status is not RoomStatus.WAITING:
             error = (ErrorCode.INVALID_STATE, "The game has already started.")
         else:
-            # Re-validate set S and the minimum-players gate under the lock (§4.2).
-            alive = eligible_player_ids(room)
-            if len(alive) < min_players_for(room.config.rule_type):
-                error = (ErrorCode.START_CONDITION_UNMET, "Not enough players to start.")
+            # Re-validate set S and rule-specific gates under the lock (§4.2).
+            if not can_start(room):
+                error = (ErrorCode.START_CONDITION_UNMET, _start_condition_message(room))
             else:
                 store.start_match(
                     room,
-                    alive_player_ids=alive,
+                    alive_player_ids=eligible_player_ids(room),
                     config=room.config,
                     match_id=generate_match_id(),
                     now=utcnow(),
@@ -601,7 +652,16 @@ async def _handle_submit_hand(
             websocket, _error_envelope(ErrorCode.INVALID_PAYLOAD, "Invalid SUBMIT_HAND payload.")
         )
         return
-    error = await runner.submit_hand(room, player, payload.round_no, payload.hand)
+    segment_err = _validate_submit_segment(room, player.player_id, payload.segment_id)
+    if segment_err is not None:
+        await manager.send(
+            websocket,
+            _error_envelope(segment_err, _SUBMIT_ERROR_MESSAGES.get(segment_err, "Rejected.")),
+        )
+        return
+    error = await runner.submit_hand(
+        room, player, payload.round_no, payload.hand, segment_id=payload.segment_id
+    )
     if error is not None:
         await manager.send(
             websocket, _error_envelope(error, _SUBMIT_ERROR_MESSAGES.get(error, "Rejected."))
@@ -667,7 +727,13 @@ async def _handle_return_to_lobby(
         ):
             error = (ErrorCode.INVALID_STATE, "Can only return to lobby after the match ends.")
         else:
+            match = room.match
+            defer_normal = match is not None and match.minority_defer_normal_next_match
             removed = store.return_to_lobby(room)
+            if defer_normal:
+                store.set_config(
+                    room, room.config.model_copy(update={"rule_type": RuleType.NORMAL})
+                )
             lobby_update = _lobby_update(room)
 
     if error is not None:
@@ -706,6 +772,7 @@ async def _handle_leave(
     close_room = False
     host_changed_id: str | None = None
     lobby_update: dict[str, Any] | None = None
+    settings_update: dict[str, Any] | None = None
     removed_self = False
     async with lock:
         match = room.match
@@ -733,6 +800,7 @@ async def _handle_leave(
                 store.close_room(room)
                 close_room = True
             else:
+                settings_update = _clear_boss_nomination_if_needed(store, room, player.player_id)
                 lobby_update = _lobby_update(room)
 
     # Detach this socket up front so the finally-`_detach` is a no-op for us.
@@ -749,6 +817,8 @@ async def _handle_leave(
             await manager.broadcast(room.room_code, _player_left(player.player_id))
         if host_changed_id is not None:
             await manager.broadcast(room.room_code, _host_changed(host_changed_id))
+        if settings_update is not None:
+            await manager.broadcast(room.room_code, settings_update)
         if lobby_update is not None:
             await manager.broadcast(room.room_code, lobby_update)
 
