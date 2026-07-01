@@ -82,7 +82,7 @@ cd frontend; npm run lint; npm run format:check; npm run test; npm run build
 ```
 
 CI（GitHub Actions, [`.github/workflows/ci.yml`](.github/workflows/ci.yml)）で
-backend（ruff / mypy / pytest）と frontend（eslint / prettier / build）を自動実行する。
+backend（ruff / mypy / pytest）と frontend（eslint / prettier / test / build）を自動実行する。
 
 ## MVP の運用前提
 
