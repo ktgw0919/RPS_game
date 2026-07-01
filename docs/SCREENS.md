@@ -112,15 +112,15 @@ flowchart TD
 - ルール別項目は `rule_type` に応じて**動的に出し分け**（条件表示）。
 - 少数派・代表・トーナメントは**選択肢として表示するが非活性**（`SettingsPanel`）。backend の判定ロジック（`game/rules/*`）は実装済み。`RoundRunner` / `ws.py` 統合（`TODO.md` R0–R5）とゲーム画面対応（R6）完了後に有効化する。
 
-### 4.2.1 ゲーム画面 — 特殊ルール（`TODO.md` R6 実装済み）
+### 4.2.1 ゲーム画面 — 特殊ルール（実装済み）
 
-ランタイム統合完了まで NORMAL 用 UI のみ。統合後に追加する表示・操作:
+| ルール | ゲーム画面の要素 |
+|--------|------------------|
+| MINORITY | 生存者数の強調。NORMAL 決着へ移行した旨（`switched_to_normal_finish` / `RuleStatusBanner`） |
+| BOSS | ボスバッジ・`scores` 表示。ボスも手を出す UI |
+| TOURNAMENT | 自分の `segment_id` のペアのみ手札 UI・残り時間。`SUBMIT_HAND` に `segment_id` を付与 |
 
-| ルール | ゲーム画面の追加要素 |
-|--------|---------------------|
-| MINORITY | 生存者数の強調。NORMAL 決着へ移行した旨の表示（`switched_to_normal_finish`） |
-| BOSS | `MatchView.boss_player_id` に基づくボスバッジ。`ROUND_RESULT` / `MATCH_END` の `scores` 表示。ボスも手を出す UI |
-| TOURNAMENT | 自分の `segment_id` のペアのみ手札 UI・残り時間。他ペアは結果サマリー（任意）。`SUBMIT_HAND` に `segment_id` を付与 |
+**未着手（任意）**: 他ペアの結果サマリー → `TODO.md` Phase 6 Step 4。
 
 再接続時は `STATE_SYNC` の `MatchView`（TOURNAMENT では所属ペアの `deadline_at`）を権威とする（`ARCHITECTURE.md` §7.1）。
 

@@ -14,7 +14,7 @@
 
 ## 3. 機能要件 (Functional Requirements)
 
-> 実装フェーズ番号は `TODO.md` の **Phase 1–5** を正とする。本節は製品能力で区切り、対応する実装フェーズを併記する。
+> 実装フェーズ番号は `TODO.md` の **Phase 1–9** を正とする。本節は製品能力で区切り、対応する実装フェーズを併記する。**MVP（Phase 1–5 + MVP 残タスク）は完了**。
 
 ### MVP (Minimum Viable Product)（実装フェーズ: Phase 1–2・4）
 まずは最もシンプルな「一斉じゃんけん」をオンラインで完結させる。
@@ -86,3 +86,20 @@
 - ディレクトリ構成・責務分割は `ARCHITECTURE.md` §2 を正とする。雛形メモ（`docs/TEMPLATE_NOTES.md`）の `Layout`/`components` 構成・シードスクリプト等は踏襲しつつ、backend の責務は `routers/`（I/O 境界）/ `core/`（接続・状態・セキュリティ基盤）/ `game/`（純粋なゲームドメイン）の3層に分割する（汎用ヘルパのみ `utils.py`）。
   - ただし雛形は REST のみで WebSocket を含まないため、リアルタイム層（WebSocket ルーター・`ConnectionManager`・判定エンジン）は本プロジェクトで新規に追加する。
 - 将来的には別システムのアカウントシステムとの連携を考慮する。
+
+## 6. 今後の拡張（post-MVP）
+
+> 実装タスクの正本は `TODO.md` **Phase 6–9**。着手時に本節と `ARCHITECTURE.md` を設計更新する。
+
+### Phase 6 — 品質・UX（推奨・次フェーズ）
+
+- [ ] **フロント回帰テスト**: `gameReducer` の Vitest（`ROUND_START` ブートストラップ等）。CI に `npm test` 追加
+- [ ] **操作フィードバック**: `START_GAME` / `UPDATE_SETTINGS` 失敗時のエラー表示。WebSocket 未接続時のホスト操作ガード
+- [ ] **（任意）E2E**: Playwright による主要導線のスモーク
+- [ ] **（任意）TOURNAMENT**: 他ペアの結果サマリー表示（`SCREENS.md` §4.2）
+
+### Phase 7–9 — 任意・将来
+
+- [ ] **本番運用**: HTTPS / `wss` デプロイ手順、本番向け `.env` チェックリスト（`ALLOW_CPU=false` 等）
+- [ ] **水平スケール**: Redis `GameStateStore`、WS pub/sub、分散ラウンドロック（`ARCHITECTURE.md` §1 / §7）
+- [ ] **製品拡張**: アカウント連携とグローバルスコアボード、CPU 戦略拡張、履歴 API 認可強化、WS レート制限
