@@ -401,3 +401,34 @@ def test_resubmit_overwrites_hand_before_judge(client: TestClient) -> None:
         result = _recv_until(host, "ROUND_RESULT")["payload"]
         assert result["hands"][host_id] == "ROCK"
         assert result["winner_ids"] == [host_id]
+
+
+def test_match_end_persists_history(client: TestClient) -> None:
+    saved: list[tuple[str, str]] = []
+
+    class RecordingHistory:
+        async def save_finished_match(self, room: object, match: object) -> None:
+            from app.models import Match, Room
+
+            assert isinstance(room, Room)
+            assert isinstance(match, Match)
+            saved.append((room.room_code, match.match_id))
+
+    recorder = RecordingHistory()
+    client.app.state.match_history = recorder  # type: ignore[attr-defined]
+    client.app.state.round_runner._match_history = recorder  # type: ignore[attr-defined]
+
+    _tune(client)
+    with _game(client, ["Host", "Bob"]) as (code, players, sockets):
+        host, bob = sockets
+        rn = _round_no(host)
+        _round_no(bob)
+        _submit(host, rn, "ROCK")
+        _submit(bob, rn, "SCISSORS")
+        _recv_until(host, "MATCH_END")
+
+    assert len(saved) == 1
+    assert saved[0][0] == code
+    match = client.app.state.store.get_room(code).match  # type: ignore[attr-defined]
+    assert match is not None
+    assert saved[0][1] == match.match_id

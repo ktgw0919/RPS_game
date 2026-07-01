@@ -37,6 +37,10 @@ ROOM_CODE_ALPHABET = "23456789ABCDEFGHJKMNPQRSTUVWXYZ"
 # Regenerate on collision; give up after this many attempts (ARCHITECTURE.md §3.1).
 ROOM_CODE_MAX_GEN_ATTEMPTS = 100
 
+# Match history list (`GET /rooms/{code}/matches`, ARCHITECTURE.md §3.1).
+MATCH_HISTORY_DEFAULT_LIMIT = 20
+MATCH_HISTORY_MAX_LIMIT = 50
+
 # --- Room capacity (REQUIREMENTS.md §3 / ARCHITECTURE.md §4.2) -------------
 ROOM_CAPACITY = 20
 

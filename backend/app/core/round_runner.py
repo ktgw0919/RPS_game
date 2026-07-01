@@ -33,6 +33,7 @@ from datetime import datetime, timedelta
 from typing import Any
 
 from app.core.connection_manager import ConnectionManager
+from app.core.match_history import MatchHistoryRepository
 from app.core.state_store import GameStateStore
 from app.game.cpu import compute_submit_delay, pick_random_hand
 from app.game.engine import RoundOutcome, judge_normal_round
@@ -80,6 +81,7 @@ class RoundRunner:
         self,
         store: GameStateStore,
         manager: ConnectionManager,
+        match_history: MatchHistoryRepository | None = None,
         *,
         now: NowFn = utcnow,
         deadline_sleep: SleepFn = _real_sleep,
@@ -90,6 +92,7 @@ class RoundRunner:
     ) -> None:
         self._store = store
         self._manager = manager
+        self._match_history = match_history
         self._now = now
         self._deadline_sleep = deadline_sleep
         self._result_delay_sleep = result_delay_sleep
@@ -309,6 +312,7 @@ class RoundRunner:
 
         if ended:
             self._cancel_key((room.room_code.upper(), segment_id))
+            await self._persist_match_history(room)
             return
         if advance_mode is RoundAdvanceMode.AUTO:
             await self._result_delay_sleep(result_display_sec)
@@ -341,6 +345,22 @@ class RoundRunner:
         task = self._timers.pop(key, None)
         if task is not None:
             task.cancel()
+
+    async def _persist_match_history(self, room: Room) -> None:
+        """Write finalized match to MongoDB; failures are logged, not propagated (§6)."""
+        if self._match_history is None:
+            return
+        match = room.match
+        if match is None or match.state is not MatchState.MATCH_END:
+            return
+        try:
+            await self._match_history.save_finished_match(room, match)
+        except Exception:
+            logger.exception(
+                "Match history persist failed for room=%s match_id=%s.",
+                room.room_code,
+                match.match_id,
+            )
 
     # --------------------------------------------------------------- messages
     def _round_start_msg(

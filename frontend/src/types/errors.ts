@@ -19,6 +19,7 @@ export const ERROR_CODES = [
   'INVALID_PAYLOAD',
   'START_CONDITION_UNMET',
   'CPU_NOT_ALLOWED',
+  'SERVICE_UNAVAILABLE',
 ] as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[number];

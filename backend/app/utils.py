@@ -38,3 +38,16 @@ def generate_room_code() -> str:
 def generate_match_id() -> str:
     """Generate an opaque match id (not a secret; just unique within a process)."""
     return secrets.token_urlsafe(12)
+
+
+def normalize_room_code(raw: str) -> str:
+    """Validate and normalize a room code (ARCHITECTURE.md §3.1 / §3.2).
+
+    Raises ValueError when the code is not exactly four allowed alphabet chars.
+    """
+    code = raw.strip().upper()
+    if len(code) != ROOM_CODE_LENGTH:
+        raise ValueError("invalid room code length")
+    if any(ch not in ROOM_CODE_ALPHABET for ch in code):
+        raise ValueError("invalid room code characters")
+    return code

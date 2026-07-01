@@ -7,8 +7,10 @@ join while IN_GAME enters as a spectator (ARCHITECTURE.md §6).
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Request, status
+from fastapi import APIRouter, Query, Request, status
 
+from app.core.constants import MATCH_HISTORY_DEFAULT_LIMIT, MATCH_HISTORY_MAX_LIMIT
+from app.core.match_history import HistoryUnavailableError, MatchHistoryRepository
 from app.core.rate_limit import SlidingWindowRateLimiter
 from app.core.security import generate_player_id, generate_player_token
 from app.core.state_store import GameStateStore
@@ -19,12 +21,13 @@ from app.models import (
     ErrorCode,
     JoinRequest,
     JoinRoomResponse,
+    MatchHistoryListResponse,
     Player,
     Room,
     RoomStateResponse,
     RoomStatus,
 )
-from app.utils import utcnow
+from app.utils import normalize_room_code, utcnow
 
 router = APIRouter(prefix="/rooms", tags=["rooms"])
 
@@ -121,3 +124,41 @@ async def get_room(code: str, request: Request) -> RoomStateResponse:
     store = _store(request)
     room = _get_open_room(store, code)
     return RoomStateResponse(room=room.to_view())
+
+
+def _match_history(request: Request) -> MatchHistoryRepository:
+    repo: MatchHistoryRepository = request.app.state.match_history
+    return repo
+
+
+@router.get("/{code}/matches", response_model=MatchHistoryListResponse)
+async def list_room_matches(
+    code: str,
+    request: Request,
+    limit: int = Query(
+        default=MATCH_HISTORY_DEFAULT_LIMIT,
+        ge=1,
+        le=MATCH_HISTORY_MAX_LIMIT,
+    ),
+) -> MatchHistoryListResponse:
+    """Finished match history for a room (ARCHITECTURE.md §3.1).
+
+    Independent of in-memory room state; reads directly from MongoDB.
+    """
+    try:
+        room_code = normalize_room_code(code)
+    except ValueError:
+        raise AppError(
+            ErrorCode.INVALID_PAYLOAD,
+            "Invalid room code.",
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        ) from None
+
+    repo = _match_history(request)
+    try:
+        return await repo.list_by_room(room_code, limit=limit)
+    except HistoryUnavailableError:
+        raise AppError(
+            ErrorCode.SERVICE_UNAVAILABLE,
+            "Match history is temporarily unavailable.",
+        ) from None

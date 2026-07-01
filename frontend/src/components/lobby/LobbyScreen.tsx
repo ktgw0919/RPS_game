@@ -1,6 +1,7 @@
 import { useState } from 'react';
 
 import { Divider, Panel, PrimaryButton } from '@/components/ui/Panel';
+import { MatchHistoryPanel } from '@/components/lobby/MatchHistoryPanel';
 import { MemberList } from '@/components/lobby/MemberList';
 import { SettingsPanel } from '@/components/lobby/SettingsPanel';
 import { SharePanel } from '@/components/lobby/SharePanel';
@@ -56,6 +57,10 @@ export function LobbyScreen() {
       <Panel>
         <SharePanel roomCode={room.room_code} />
       </Panel>
+
+      <Divider />
+
+      <MatchHistoryPanel roomCode={room.room_code} />
 
       <Divider />
 
