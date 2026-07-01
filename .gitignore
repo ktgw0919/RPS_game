@@ -35,3 +35,7 @@ Thumbs.db
 
 # --- MongoDB local data (docker volume mount, if any) ---
 .mongo-data/
+
+# --- Local deploy (machine-specific; templates are under deploy/*.example) ---
+Caddyfile
+deploy/start-demo.ps1
