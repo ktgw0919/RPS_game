@@ -112,9 +112,7 @@ def test_list_room_matches_case_insensitive_code(history_client: TestClient) -> 
 
 
 def test_list_room_matches_has_more(history_client: TestClient) -> None:
-    docs = [
-        _match_doc(match_id=f"m{i}", ended_at=NOW - timedelta(minutes=i)) for i in range(3)
-    ]
+    docs = [_match_doc(match_id=f"m{i}", ended_at=NOW - timedelta(minutes=i)) for i in range(3)]
     history_client.app.state.match_history = _history_repo_with_docs(*docs)
     resp = history_client.get("/rooms/ABCD/matches?limit=2")
     assert resp.status_code == 200

@@ -50,15 +50,11 @@ export function useMatchHistory(
     MatchHistoryListResponse,
     ApiRequestError | Error,
     MatchHistoryKey | null
-  >(
-    key,
-    ([, code, lim]: MatchHistoryKey) => getMatchHistory(code, lim),
-    {
-      revalidateOnFocus: false,
-      revalidateOnReconnect: true,
-      revalidateOnMount: true,
-    },
-  );
+  >(key, ([, code, lim]: MatchHistoryKey) => getMatchHistory(code, lim), {
+    revalidateOnFocus: false,
+    revalidateOnReconnect: true,
+    revalidateOnMount: true,
+  });
 
   const refresh = () => mutate();
 

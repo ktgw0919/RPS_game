@@ -19,10 +19,7 @@ function formatEndedAtLocal(endedAt: IsoDateTime): string {
   });
 }
 
-function playerLabel(
-  playerId: string,
-  players: MatchHistoryEntry['players'],
-): string {
+function playerLabel(playerId: string, players: MatchHistoryEntry['players']): string {
   const player = players.find((p) => p.player_id === playerId);
   if (!player) return playerId;
   return player.is_cpu ? `${player.display_name} 🤖` : player.display_name;
@@ -36,9 +33,7 @@ function formatWinners(entry: MatchHistoryEntry): string {
 function formatScores(entry: MatchHistoryEntry): string | null {
   const rows = Object.entries(entry.scores);
   if (rows.length === 0) return null;
-  return rows
-    .map(([id, score]) => `${playerLabel(id, entry.players)}: ${score}`)
-    .join(' / ');
+  return rows.map(([id, score]) => `${playerLabel(id, entry.players)}: ${score}`).join(' / ');
 }
 
 function HistoryRow({
