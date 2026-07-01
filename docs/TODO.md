@@ -31,7 +31,7 @@
 - [x] Step 1: 「少数派勝利ルール (Minority Rule)」の集計・判定アルゴリズムの実装とテスト（`game/rules/minority.py`）。生存者が閾値以下で NORMAL 決着へ移行（閾値・タイミングは `MatchConfig`）
 - [x] Step 2: 「代表ルール (Boss Battle)」の非対称ゲームロジックの実装（`game/rules/boss_battle.py`）。ボスはホスト指名・非参加者（勝者カウント対象外）
 - [x] Step 3: 「1対1トーナメント」の自動進行（ブラケット生成・奇数は bye・ペアごとの独立判定・ペア内あいこ再戦）の実装（`game/rules/tournament.py`）。並行するペアはラウンド系メッセージの `segment_id`（`ARCHITECTURE.md` §4）で識別する
-- [ ] Step 4: 各ルールの「あいこ」再戦フローと `MatchConfig.max_draw_rounds`（あいこ回数の上限到達時は引き分け終了）の厳密化。各ルールをユニットテストで検証
+- [x] Step 4: 各ルールの「あいこ」再戦フローと `MatchConfig.max_draw_rounds`（あいこ回数の上限到達時は引き分け終了）の厳密化。各ルールをユニットテストで検証
 
 ## Phase 4: Frontend Integration & Polish
 - [x] Step 1: `src/hooks/useWebSocket.ts` を作成し、WebSocket でゲームループを扱う。ゲーム状態は React Context + `useReducer` で管理し、`STATE_SYNC` をスナップショット・他メッセージを差分アクションとして reducer で適用する（SWR は MVP では導入せず、REST は軽量 fetch ラッパーのみ）
