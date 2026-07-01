@@ -22,10 +22,13 @@ $labels = @(
     @{ name = "mvp-polish"; color = "fbca04"; description = "MVP remaining tasks" }
 )
 foreach ($l in $labels) {
+    $prev = $ErrorActionPreference
+    $ErrorActionPreference = "SilentlyContinue"
     gh label create $l.name --color $l.color --description $l.description --repo $Repo 2>$null
     if ($LASTEXITCODE -ne 0) {
         gh label edit $l.name --color $l.color --description $l.description --repo $Repo 2>$null
     }
+    $ErrorActionPreference = $prev
 }
 
 Write-Host "==> Milestones"
