@@ -1,11 +1,13 @@
 import { SpectatorBanner } from '@/components/game/SpectatorBanner';
 import { Panel, PrimaryButton } from '@/components/ui/Panel';
 import { useGame } from '@/hooks/useGame';
+import { useHostControlsEnabled } from '@/hooks/useWsConnection';
 import { MATCH_END_REASON_LABELS } from '@/lib/labels';
 
 export function MatchEndView() {
   const { state, send } = useGame();
   const { match, members, you, lastMatchEnd, room } = state;
+  const hostControlsEnabled = useHostControlsEnabled();
 
   if (!match || !you || !room) return null;
 
@@ -22,8 +24,12 @@ export function MatchEndView() {
             <p className="text-center text-sm text-slate-300">
               再接続しました。マッチは終了しています。
             </p>
-            {isHost ? (
+            {hostControlsEnabled ? (
               <PrimaryButton onClick={() => send('RETURN_TO_LOBBY')}>ロビーへ戻る</PrimaryButton>
+            ) : isHost ? (
+              <p className="text-center text-xs text-amber-400">
+                サーバーに接続中です。接続が完了してから操作できます。
+              </p>
             ) : (
               <p className="text-center text-sm text-slate-400">
                 ホストがロビーへ戻るのを待っています…
@@ -67,8 +73,12 @@ export function MatchEndView() {
             </ul>
           ) : null}
 
-          {isHost ? (
+          {hostControlsEnabled ? (
             <PrimaryButton onClick={() => send('RETURN_TO_LOBBY')}>ロビーへ戻る</PrimaryButton>
+          ) : isHost ? (
+            <p className="text-center text-xs text-amber-400">
+              サーバーに接続中です。接続が完了してから操作できます。
+            </p>
           ) : (
             <p className="text-center text-sm text-slate-400">
               ホストがロビーへ戻るのを待っています…

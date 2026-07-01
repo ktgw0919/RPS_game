@@ -1,11 +1,10 @@
 import { useGame } from '@/hooks/useGame';
-import { FATAL_WS_ERROR_CODES } from '@/types';
 
 export function ConnectionBanner() {
   const { state } = useGame();
-  const { connectionStatus, lastError } = state;
+  const { connectionStatus } = state;
 
-  if (connectionStatus === 'connected' && !lastError) return null;
+  if (connectionStatus === 'connected') return null;
 
   let message: string | null = null;
   let tone: 'warn' | 'error' | 'info' = 'error';
@@ -18,9 +17,6 @@ export function ConnectionBanner() {
     tone = 'warn';
   } else if (connectionStatus === 'replaced') {
     message = '別の端末で同じアカウントが接続されました。';
-  } else if (lastError && !FATAL_WS_ERROR_CODES.has(lastError.code)) {
-    message = `${lastError.code}: ${lastError.message}`;
-    tone = 'warn';
   }
 
   if (!message) return null;

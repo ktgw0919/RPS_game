@@ -3,18 +3,20 @@ import { RuleStatusBanner } from '@/components/game/RuleStatusBanner';
 import { SpectatorBanner } from '@/components/game/SpectatorBanner';
 import { Panel, PrimaryButton } from '@/components/ui/Panel';
 import { useGame } from '@/hooks/useGame';
+import { useHostControlsEnabled } from '@/hooks/useWsConnection';
 import { HAND_LABELS } from '@/lib/labels';
 
 export function RoundResultView() {
   const { state, send } = useGame();
   const { match, members, you, lastRoundResult, config, room } = state;
+  const hostControlsEnabled = useHostControlsEnabled();
 
   if (!match || !config || !you || !room) return null;
 
   const isHost = you.is_host && you.player_id === room.host_player_id;
   const isSpectator = you.is_spectator;
   const showNext =
-    isHost && config.round_advance_mode === 'MANUAL' && match.state === 'ROUND_RESULT';
+    hostControlsEnabled && config.round_advance_mode === 'MANUAL' && match.state === 'ROUND_RESULT';
 
   const nameById = new Map(members.map((m) => [m.player_id, m.display_name]));
 
@@ -33,6 +35,12 @@ export function RoundResultView() {
             </p>
             {showNext ? (
               <PrimaryButton onClick={() => send('NEXT_ROUND')}>次のラウンドへ</PrimaryButton>
+            ) : isHost &&
+              config.round_advance_mode === 'MANUAL' &&
+              match.state === 'ROUND_RESULT' ? (
+              <p className="text-center text-xs text-amber-400">
+                サーバーに接続中です。接続が完了してから操作できます。
+              </p>
             ) : config.round_advance_mode === 'AUTO' ? (
               <p className="text-center text-xs text-slate-500">自動で次のラウンドに進みます…</p>
             ) : null}
@@ -109,6 +117,10 @@ export function RoundResultView() {
 
           {showNext ? (
             <PrimaryButton onClick={() => send('NEXT_ROUND')}>次のラウンドへ</PrimaryButton>
+          ) : isHost && config.round_advance_mode === 'MANUAL' && match.state === 'ROUND_RESULT' ? (
+            <p className="text-center text-xs text-amber-400">
+              サーバーに接続中です。接続が完了してから操作できます。
+            </p>
           ) : config.round_advance_mode === 'AUTO' ? (
             <p className="text-center text-xs text-slate-500">自動で次のラウンドに進みます…</p>
           ) : null}

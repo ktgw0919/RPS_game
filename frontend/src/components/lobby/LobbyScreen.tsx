@@ -7,6 +7,8 @@ import { SettingsPanel } from '@/components/lobby/SettingsPanel';
 import { SharePanel } from '@/components/lobby/SharePanel';
 import { useAllowCpu } from '@/hooks/useAllowCpu';
 import { useGame } from '@/hooks/useGame';
+import { useHostControlsEnabled, useWsConnected } from '@/hooks/useWsConnection';
+import { formatWsError } from '@/lib/wsErrorDisplay';
 import {
   canStartGame,
   eligiblePlayerIds,
@@ -16,20 +18,25 @@ import {
 
 export function LobbyScreen() {
   const { state, send } = useGame();
-  const { room, members, you, config, connectionStatus } = state;
+  const { room, members, you, config, lastError } = state;
   const allowCpu = useAllowCpu();
+  const hostControlsEnabled = useHostControlsEnabled();
+  const isConnected = useWsConnected();
   const [addCpuBusy, setAddCpuBusy] = useState(false);
 
   if (!room || !config || !you) return null;
 
   const isHost = you.is_host && you.player_id === room.host_player_id;
-  const isConnected = connectionStatus === 'connected';
   const startBlocked = getStartBlockReason(members, config);
-  const canStart = isHost && isConnected && canStartGame(members, config);
+  const canStart = hostControlsEnabled && canStartGame(members, config);
   const hostMember = members.find((m) => m.player_id === room.host_player_id);
   const hostDisconnected = hostMember?.connection_state === 'DISCONNECTED' && !hostMember.is_cpu;
   const roomFull = members.length >= room.capacity;
-  const cpuControlsEnabled = isHost && allowCpu === true && room.status === 'WAITING';
+  const cpuControlsEnabled = hostControlsEnabled && allowCpu === true && room.status === 'WAITING';
+  const serverStartError =
+    isHost && isConnected && lastError?.code === 'START_CONDITION_UNMET'
+      ? formatWsError(lastError)
+      : null;
   const eligible = eligiblePlayerIds(members);
   const needsCpuHint =
     isHost &&
@@ -91,7 +98,9 @@ export function LobbyScreen() {
           <PrimaryButton disabled={!canStart} onClick={() => send('START_GAME')}>
             ゲーム開始
           </PrimaryButton>
-          {startBlocked ? (
+          {serverStartError ? (
+            <p className="text-center text-xs text-amber-400">{serverStartError}</p>
+          ) : startBlocked ? (
             <p className="text-center text-xs text-amber-400">{startBlocked}</p>
           ) : !isConnected ? (
             <p className="text-center text-xs text-amber-400">

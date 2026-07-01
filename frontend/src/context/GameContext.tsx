@@ -19,6 +19,7 @@ export interface GameContextValue {
   ) => void;
   disconnect: () => void;
   reset: () => void;
+  clearError: () => void;
 }
 
 const GameContext = createContext<GameContextValue | null>(null);
@@ -51,9 +52,13 @@ export function GameProvider({
     dispatch({ type: 'RESET' });
   }, []);
 
+  const clearError = useCallback(() => {
+    dispatch({ type: 'CLEAR_ERROR' });
+  }, []);
+
   const value = useMemo<GameContextValue>(
-    () => ({ state, send, disconnect, reset }),
-    [state, send, disconnect, reset],
+    () => ({ state, send, disconnect, reset, clearError }),
+    [state, send, disconnect, reset, clearError],
   );
 
   return <GameContext.Provider value={value}>{children}</GameContext.Provider>;
