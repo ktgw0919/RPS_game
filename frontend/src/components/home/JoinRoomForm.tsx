@@ -4,17 +4,32 @@ import { useNavigate } from 'react-router-dom';
 import { PrimaryButton, SecondaryButton } from '@/components/ui/Panel';
 import { joinRoom } from '@/lib/api';
 import { DISPLAY_NAME_MAX_LEN, DISPLAY_NAME_MIN_LEN } from '@/lib/constants';
+import { saveLastDisplayName } from '@/lib/displayNameStorage';
 import { saveSession } from '@/lib/session';
 
 interface JoinRoomFormProps {
   initialCode?: string;
+  initialDisplayName?: string;
+  /** When switching rooms, block joining the same code. */
+  currentRoomCode?: string;
+  beforeJoin?: () => Promise<void>;
+  onJoined?: (roomCode: string) => void;
   onCancel?: () => void;
+  submitLabel?: string;
 }
 
-export function JoinRoomForm({ initialCode = '', onCancel }: JoinRoomFormProps) {
+export function JoinRoomForm({
+  initialCode = '',
+  initialDisplayName = 'Player',
+  currentRoomCode,
+  beforeJoin,
+  onJoined,
+  onCancel,
+  submitLabel = '参加',
+}: JoinRoomFormProps) {
   const navigate = useNavigate();
   const [code, setCode] = useState(initialCode);
-  const [name, setName] = useState('Player');
+  const [name, setName] = useState(initialDisplayName);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -26,6 +41,10 @@ export function JoinRoomForm({ initialCode = '', onCancel }: JoinRoomFormProps) 
       setError('ルームコードを入力してください');
       return;
     }
+    if (currentRoomCode && trimmedCode === currentRoomCode.trim().toUpperCase()) {
+      setError('いまのルームと同じコードです');
+      return;
+    }
     if (trimmedName.length < DISPLAY_NAME_MIN_LEN || trimmedName.length > DISPLAY_NAME_MAX_LEN) {
       setError(`表示名は ${DISPLAY_NAME_MIN_LEN}〜${DISPLAY_NAME_MAX_LEN} 文字です`);
       return;
@@ -33,14 +52,21 @@ export function JoinRoomForm({ initialCode = '', onCancel }: JoinRoomFormProps) 
     setBusy(true);
     setError(null);
     try {
+      if (beforeJoin) await beforeJoin();
       const res = await joinRoom(trimmedCode, trimmedName);
+      saveLastDisplayName(trimmedName);
       saveSession({
         roomCode: trimmedCode,
         playerId: res.player_id,
         playerToken: res.player_token,
       });
-      void navigate(`/rooms/${trimmedCode}`);
+      if (onJoined) {
+        onJoined(trimmedCode);
+      } else {
+        void navigate(`/rooms/${trimmedCode}`);
+      }
     } catch (err) {
+      if (err instanceof Error && err.message === 'cancelled') return;
       setError(err instanceof Error ? err.message : '参加に失敗しました');
     } finally {
       setBusy(false);
@@ -72,7 +98,7 @@ export function JoinRoomForm({ initialCode = '', onCancel }: JoinRoomFormProps) 
       <div className="flex gap-2">
         {onCancel ? <SecondaryButton onClick={onCancel}>キャンセル</SecondaryButton> : null}
         <PrimaryButton type="submit" disabled={busy} className="flex-1">
-          参加
+          {submitLabel}
         </PrimaryButton>
       </div>
     </form>

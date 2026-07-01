@@ -127,7 +127,7 @@ flowchart TD
 ### 4.1.1 QR コード共有（未実装）
 
 - **現状**: `SharePanel` でルームコード・参加リンク（`/join/:code`）のコピーのみ。
-- **予定**: `[QR]` ボタン → `ShareQrModal`（`react-qr-code`）で QR 表示。`TODO.md` MVP 残タスク。
+- **予定**: `[QR]` ボタン → `ShareQrModal`（`react-qr-code`）で QR 表示。**実装済み**。
 
 ### 4.3 ライブ同期の挙動
 
@@ -168,7 +168,7 @@ flowchart TD
 - **ホスト操作の出し分け**: 設定パネル・開始 / 次へ / 「ロビーへ戻る」ボタンは**ホストのトークンを持つクライアントのみ**に表示する。「ロビーへ戻る」は `RETURN_TO_LOBBY` を送り、サーバーが `Room.status` を `WAITING` へ戻すまで結果画面（`MATCH_END`）を表示し続ける（`ARCHITECTURE.md` §6）。表示制御はあくまで UX 上のもので、**権限の最終検証はサーバー側**でも行う。
 - **エラー導線**: ルーム無し / 満員 / 解散 / トークン不正は `ERROR`（コード付き）を受けてホームへ誘導し、理由を表示する。
 - **開発/デモ用 CPU プレイヤー**: ロビーの参加者エリアに、ホストのみ・`ALLOW_CPU` 有効時のみ「＋CPUを追加」ボタンを表示する（押下で `ADD_CPU` を送信）。CPU は参加者一覧で**ロボットバッジ（🤖）付き**で表示し、各 CPU 行にホスト用「削除」ボタン（`REMOVE_CPU`）を出す。CPU は定員・開始最小人数にカウントされるため、ソロでも「ゲーム開始」が活性化する。CPU 行には手の提出 UI・観戦表示は出さない（CPU 自身のクライアントは存在しない）。`ALLOW_CPU=false` 環境では追加ボタンを出さず、サーバーは `CPU_NOT_ALLOWED` を返す（`ARCHITECTURE.md` §3/§4.1/§11）。
-- **ルーム操作（未実装）**: 退室・別ルーム参加・新規ルーム作成の UI（`RoomActionsPanel` / `useExitRoom`）。試合中（`IN_GAME`）は移動系を非活性。WS の `LEAVE` → `disconnect` → セッションクリアの手順は `ARCHITECTURE.md` §3。`TODO.md` MVP 残タスク。
+- **ルーム操作**: 退室・別ルーム参加・新規ルーム作成の UI（`RoomActionsPanel` / `useExitRoom`）。試合中（`IN_GAME` かつ `MATCH_END` 以外）は移動系を非活性。WS の `LEAVE` → `disconnect` → セッションクリアの手順は `ARCHITECTURE.md` §3。
 
 ## 6. 関連ドキュメント
 

@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 
 import { CreateRoomModal } from '@/components/home/CreateRoomModal';
 import { PrimaryButton, SecondaryButton } from '@/components/ui/Panel';
+import { loadLastDisplayName } from '@/lib/displayNameStorage';
 import { loadSession } from '@/lib/session';
 
 export function HomePage() {
@@ -36,7 +37,11 @@ export function HomePage() {
         ) : null}
       </div>
 
-      <CreateRoomModal open={createOpen} onClose={() => setCreateOpen(false)} />
+      <CreateRoomModal
+        open={createOpen}
+        onClose={() => setCreateOpen(false)}
+        initialDisplayName={loadLastDisplayName()}
+      />
     </section>
   );
 }

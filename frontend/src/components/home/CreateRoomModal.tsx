@@ -1,21 +1,38 @@
-import { FormEvent, useState } from 'react';
+import { FormEvent, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 import { PrimaryButton, SecondaryButton } from '@/components/ui/Panel';
 import { createRoom } from '@/lib/api';
 import { DISPLAY_NAME_MAX_LEN, DISPLAY_NAME_MIN_LEN } from '@/lib/constants';
+import { loadLastDisplayName, saveLastDisplayName } from '@/lib/displayNameStorage';
 import { saveSession } from '@/lib/session';
 
 interface CreateRoomModalProps {
   open: boolean;
   onClose: () => void;
+  initialDisplayName?: string;
+  beforeCreate?: () => Promise<void>;
+  onCreated?: (roomCode: string) => void;
 }
 
-export function CreateRoomModal({ open, onClose }: CreateRoomModalProps) {
+export function CreateRoomModal({
+  open,
+  onClose,
+  initialDisplayName,
+  beforeCreate,
+  onCreated,
+}: CreateRoomModalProps) {
   const navigate = useNavigate();
-  const [name, setName] = useState('Player');
+  const [name, setName] = useState(initialDisplayName ?? loadLastDisplayName());
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (open) {
+      setName(initialDisplayName ?? loadLastDisplayName());
+      setError(null);
+    }
+  }, [open, initialDisplayName]);
 
   if (!open) return null;
 
@@ -29,15 +46,22 @@ export function CreateRoomModal({ open, onClose }: CreateRoomModalProps) {
     setBusy(true);
     setError(null);
     try {
+      if (beforeCreate) await beforeCreate();
       const res = await createRoom(trimmed);
+      saveLastDisplayName(trimmed);
       saveSession({
         roomCode: res.room_code,
         playerId: res.player_id,
         playerToken: res.player_token,
       });
       onClose();
-      void navigate(`/rooms/${res.room_code}`);
+      if (onCreated) {
+        onCreated(res.room_code);
+      } else {
+        void navigate(`/rooms/${res.room_code}`);
+      }
     } catch (err) {
+      if (err instanceof Error && err.message === 'cancelled') return;
       setError(err instanceof Error ? err.message : 'ルーム作成に失敗しました');
     } finally {
       setBusy(false);
@@ -45,12 +69,17 @@ export function CreateRoomModal({ open, onClose }: CreateRoomModalProps) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 p-4 sm:items-center">
+    <div
+      className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 p-4 sm:items-center"
+      onClick={onClose}
+      role="presentation"
+    >
       <div
         role="dialog"
         aria-modal
         aria-labelledby="create-room-title"
         className="w-full max-w-md rounded-2xl border border-slate-700 bg-slate-900 p-5 shadow-xl"
+        onClick={(e) => e.stopPropagation()}
       >
         <h2 id="create-room-title" className="text-lg font-semibold text-white">
           ルームを作成
